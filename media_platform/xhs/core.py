@@ -364,7 +364,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
             task_list.append(task)
         await asyncio.gather(*task_list)
 
-    async def get_comments(self, note_id: str, xsec_token: str, note_detail: Dict = None, semaphore: asyncio.Semaphore = None):
+    async def get_comments(self, note_id: str, xsec_token: str, semaphore: asyncio.Semaphore = None):
         """Get note comments with keyword filtering and quantity limitation"""
         async with semaphore:
             utils.logger.info(
