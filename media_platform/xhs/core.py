@@ -15,6 +15,8 @@ import random
 import time
 from asyncio import Task
 from typing import Dict, List, Optional, Tuple
+import json
+import aiofiles
 
 from playwright.async_api import BrowserContext, BrowserType, Page, async_playwright
 from tenacity import RetryError
@@ -44,6 +46,9 @@ class XiaoHongShuCrawler(AbstractCrawler):
         self.index_url = "https://www.xiaohongshu.com"
         # self.user_agent = utils.get_user_agent()
         self.user_agent = config.UA if config.UA else "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        # 创建并保存 store 实例
+        from store.xhs import XhsStoreFactory
+        self.store = XhsStoreFactory.create_store()
 
     async def start(self) -> None:
         playwright_proxy_format, httpx_proxy_format = None, None
@@ -321,6 +326,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     note_detail.update(
                         {"xsec_token": xsec_token, "xsec_source": xsec_source}
                     )
+
+                    # 保存笔记详情到JSONL，供后续处理
+                    if config.ENABLE_COMMENT_CONVERSATION:
+                        await self.save_note_detail_to_jsonl(note_id, note_detail)
+
                     return note_detail
             except DataFetchError as ex:
                 utils.logger.error(
@@ -357,27 +367,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
             )
             task_list.append(task)
         await asyncio.gather(*task_list)
-
-    async def get_comments(
-        self, note_id: str, xsec_token: str, semaphore: asyncio.Semaphore
-    ):
-        """Get note comments with keyword filtering and quantity limitation"""
-        async with semaphore:
-            utils.logger.info(
-                f"[XiaoHongShuCrawler.get_comments] Begin get note id comments {note_id}"
-            )
-            # When proxy is not enabled, increase the crawling interval
-            if config.ENABLE_IP_PROXY:
-                crawl_interval = random.random()
-            else:
-                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
-            await self.xhs_client.get_note_all_comments(
-                note_id=note_id,
-                xsec_token=xsec_token,
-                crawl_interval=crawl_interval,
-                callback=xhs_store.batch_update_xhs_note_comments,
-                max_count=CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
-            )
 
     @staticmethod
     def format_proxy_info(
@@ -514,3 +503,193 @@ class XiaoHongShuCrawler(AbstractCrawler):
             extension_file_name = f"{videoNum}.mp4"
             videoNum += 1
             await xhs_store.update_xhs_note_image(note_id, content, extension_file_name)
+
+    async def process_note_comments_to_jsonl(self, note_id: str, note_detail: Dict, comments: List[Dict]):
+        """处理笔记评论并导出为JSONL格式
+        
+        Args:
+            note_id: 笔记ID
+            note_detail: 笔记详情
+            comments: 评论列表
+        """
+        if not comments:
+            utils.logger.info(f"[XiaoHongShuCrawler.process_note_comments_to_jsonl] No comments for note {note_id}")
+            return
+        
+        # 创建输出目录
+        output_dir = config.COMMENT_CORPUS_DIR
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 获取笔记作者昵称
+        author_nickname = note_detail.get("user", {}).get("nickname", "")
+        note_title = note_detail.get("title", "")
+        
+        # 标记作者身份
+        for comment in comments:
+            comment["is_author"] = comment.get("user_info", {}).get("nickname") == author_nickname
+            for sub_comment in comment.get("sub_comments", []):
+                sub_comment["is_author"] = sub_comment.get("user_info", {}).get("nickname") == author_nickname
+        
+        # 构建对话树
+        conversations = self._build_comment_conversations(note_id, note_detail, comments)
+        
+        # 保存为JSONL
+        output_file = os.path.join(output_dir, f"{note_id}_{note_title}_{author_nickname}.jsonl")
+        async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+            for conv in conversations:
+                await f.write(json.dumps(conv, ensure_ascii=False) + '\n')
+            
+        utils.logger.info(f"[XiaoHongShuCrawler.process_note_comments_to_jsonl] Saved {len(conversations)} conversations for note {note_id}")
+
+    def _build_comment_conversations(self, note_id: str, note_detail: Dict, comments: List[Dict]) -> List[Dict]:
+        """构建评论对话树
+        
+        Args:
+            note_id: 笔记ID
+            note_detail: 笔记详情
+            comments: 评论列表
+            
+        Returns:
+            对话列表
+        """
+        # 过滤掉没有子评论的单条评论
+        filtered_comments = [
+            comment for comment in comments
+            if not (
+                (comment.get("sub_comment_count") == "0" or comment.get("sub_comment_count") == 0) and
+                (comment.get("target_comment", {}).get("id", 0) == 0)
+            )
+        ]
+
+        # test
+        print("filtered_comments:", filtered_comments)
+        
+        conversations = []
+        
+        for comment in filtered_comments:
+            conversation = {
+                "note_id": note_id,
+                "note_title": note_detail.get("title", ""),
+                "note_desc": note_detail.get("desc", ""),
+                "messages": []
+            }
+            
+            '''
+            user_info = comment_item.get("user_info", {})
+            comment_id = comment_item.get("id")
+            comment_pictures = [item.get("url_default", "") for item in comment_item.get("pictures", [])]
+            target_comment = comment_item.get("target_comment", {})
+            local_db_item = {
+                "comment_id": comment_id, # 评论id
+                "create_time": comment_item.get("create_time"), # 评论时间
+                "ip_location": comment_item.get("ip_location"), # ip地址
+                "note_id": note_id, # 帖子id
+                "content": comment_item.get("content"), # 评论内容
+                "user_id": user_info.get("user_id"), # 用户id
+                "nickname": user_info.get("nickname"), # 用户昵称
+                "avatar": user_info.get("image"), # 用户头像
+                "sub_comment_count": comment_item.get("sub_comment_count", 0), # 子评论数
+                "pictures": ",".join(comment_pictures), # 评论图片
+                "parent_comment_id": target_comment.get("id", 0), # 父评论id
+                "last_modify_ts": utils.get_current_timestamp(), # 最后更新时间戳（MediaCrawler程序生成的，主要用途在db存储的时候记录一条记录最新更新时间）
+                "like_count": comment_item.get("like_count", 0),
+            }
+            '''
+
+            comment_pictures = [item.get("url_default", "") for item in comment.get("pictures", [])]
+            # 添加根评论
+            conversation["messages"].append({
+                "comment_id": comment.get["id"],
+                "user_id": comment.get("user_info", {}).get("user_id"),
+                "user_name": comment.get("user_info", {}).get("nickname"),
+                "content": comment.get("content"),
+                "pictures": ",".join(comment_pictures), # 评论图片
+                "create_time": comment.get("create_time"),
+                "is_author": comment.get("is_author", False),
+                "like_count": comment.get("like_count", 0)
+            })
+            
+            # 添加子评论
+            for sub_comment in comment.get("sub_comments", []):
+                sub_comment_pictures = [item.get("url_default", "") for item in sub_comment.get("pictures", [])]
+                conversation["messages"].append({
+                    "comment_id": sub_comment["id"],
+                    "parent_id": comment["id"],
+                    "user_id": sub_comment.get("user_info", {}).get("user_id"),
+                    "user_name": sub_comment.get("user_info", {}).get("nickname"),
+                    "content": sub_comment.get("content"),
+                    "pictures": ",".join(sub_comment_pictures), # 评论图片'
+                    "create_time": sub_comment.get("create_time"),
+                    "is_author": sub_comment.get("is_author", False),
+                    "like_count": sub_comment.get("like_count", 0)
+                })
+            
+            # 只保留有对话的评论（至少有一个回复）
+            if len(conversation["messages"]) > 0:
+                conversations.append(conversation)
+        
+        return conversations
+
+    async def save_note_detail_to_jsonl(self, note_id: str, note_detail: Dict):
+        """保存笔记详情到JSONL文件，供后续处理
+        
+        Args:
+            note_id: 笔记ID
+            note_detail: 笔记详情
+        """
+        # 创建临时目录
+        temp_dir = os.path.join(config.COMMENT_CORPUS_DIR, "temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # 保存笔记详情
+        output_file = os.path.join(temp_dir, f"{note_id}_detail.json")
+        async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(note_detail, ensure_ascii=False))
+        
+        utils.logger.info(f"[XiaoHongShuCrawler.save_note_detail_to_jsonl] Saved note detail for {note_id}")
+
+    async def get_comments(self, note_id: str, xsec_token: str, note_detail: Dict = None, semaphore: asyncio.Semaphore = None):
+        """Get note comments with keyword filtering and quantity limitation"""
+        if semaphore:
+            async with semaphore:
+                return await self._get_comments_impl(note_id, xsec_token, note_detail)
+        else:
+            return await self._get_comments_impl(note_id, xsec_token, note_detail)
+
+    async def _get_comments_impl(self, note_id: str, xsec_token: str, note_detail: Dict = None):
+        """评论获取实现"""
+        utils.logger.info(
+            f"[XiaoHongShuCrawler.get_comments] Begin get note id comments {note_id}"
+        )
+        # When proxy is not enabled, increase the crawling interval
+        if config.ENABLE_IP_PROXY:
+            crawl_interval = random.random()
+        else:
+            crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
+        
+        # 获取评论
+        comments = await self.xhs_client.get_note_all_comments(
+            note_id=note_id,
+            xsec_token=xsec_token,
+            crawl_interval=crawl_interval,
+            callback=xhs_store.batch_update_xhs_note_comments,
+            max_count=CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
+        )
+
+        # 如果启用了评论对话保留，则保存评论到JSONL
+        if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
+            # 目前只支持json格式的转化（其他格式CSV、DB会报错）
+            await self.store.convert_comments_to_conversations()
+
+    async def stop(self):
+        """Stop crawler and clean up resources"""
+        utils.logger.info("[XiaoHongShuCrawler.stop] Begin stop xiaohongshu crawler ...")
+        # 安全关闭浏览器
+  
+        try:
+            if hasattr(self, 'playwright') and self.playwright:
+                await self.playwright.stop()
+        except Exception as e:
+            utils.logger.error(f"[XiaoHongShuCrawler.stop] Error stopping playwright: {e}")
+        
+        utils.logger.info("[XiaoHongShuCrawler.stop] Stop xiaohongshu crawler successful")

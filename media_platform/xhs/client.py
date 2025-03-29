@@ -319,6 +319,7 @@ class XiaoHongShuClient(AbstractApiClient):
             "xsec_token": xsec_token,
         }
         return await self.get(uri, params)
+    
 
     async def get_note_all_comments(
         self,
@@ -368,66 +369,7 @@ class XiaoHongShuClient(AbstractApiClient):
             )
             result.extend(sub_comments)
         return result
-
-    async def get_comments_all_sub_comments(
-        self,
-        comments: List[Dict],
-        xsec_token: str,
-        crawl_interval: float = 1.0,
-        callback: Optional[Callable] = None,
-    ) -> List[Dict]:
-        """
-        获取指定一级评论下的所有二级评论, 该方法会一直查找一级评论下的所有二级评论信息
-        Args:
-            comments: 评论列表
-            xsec_token: 验证token
-            crawl_interval: 爬取一次评论的延迟单位（秒）
-            callback: 一次评论爬取结束后
-
-        Returns:
-
-        """
-        if not config.ENABLE_GET_SUB_COMMENTS:
-            utils.logger.info(
-                f"[XiaoHongShuCrawler.get_comments_all_sub_comments] Crawling sub_comment mode is not enabled"
-            )
-            return []
-
-        result = []
-        for comment in comments:
-            note_id = comment.get("note_id")
-            sub_comments = comment.get("sub_comments")
-            if sub_comments and callback:
-                await callback(note_id, sub_comments)
-
-            sub_comment_has_more = comment.get("sub_comment_has_more")
-            if not sub_comment_has_more:
-                continue
-
-            root_comment_id = comment.get("id")
-            sub_comment_cursor = comment.get("sub_comment_cursor")
-
-            while sub_comment_has_more:
-                comments_res = await self.get_note_sub_comments(
-                    note_id=note_id,
-                    root_comment_id=root_comment_id,
-                    xsec_token=xsec_token,
-                    num=10,
-                    cursor=sub_comment_cursor,
-                )
-                sub_comment_has_more = comments_res.get("has_more", False)
-                sub_comment_cursor = comments_res.get("cursor", "")
-                if "comments" not in comments_res:
-                    utils.logger.info(
-                        f"[XiaoHongShuClient.get_comments_all_sub_comments] No 'comments' key found in response: {comments_res}"
-                    )
-                    break
-                comments = comments_res["comments"]
-                if callback:
-                    await callback(note_id, comments)
-                await asyncio.sleep(crawl_interval)
-                result.extend(comments)
-        return result
+    
 
     async def get_creator_info(self, user_id: str) -> Dict:
         """
@@ -605,3 +547,136 @@ class XiaoHongShuClient(AbstractApiClient):
             return get_note_dict(html)
         except:
             return None
+
+    async def get_comments_all_sub_comments(
+        self,
+        comments: List[Dict],
+        xsec_token: str,
+        crawl_interval: float = 1.0,
+        callback: Optional[Callable] = None,
+        max_depth: int = config.COMMENT_CONVERSATION_MAX_DEPTH,  # 默认最大递归深度为3
+        current_depth: int = 1  # 当前递归深度，初始为1
+    ) -> List[Dict]:
+        """
+        递归获取多级子评论，可以获取任意深度的评论树
+        
+        Note: 这个方法是get_comments_all_sub_comments的增强版，可以获取多级嵌套的子评论
+        
+        Args:
+            comments: 评论列表
+            xsec_token: 验证token
+            crawl_interval: 爬取一次评论的延迟单位（秒）
+            callback: 一次评论爬取结束后的回调函数
+            max_depth: 最大递归深度，默认为3，设置为-1表示无限递归
+            current_depth: 当前递归深度，仅内部使用
+            
+        Returns:
+            所有子评论的列表，包含嵌套结构
+        """
+        if not config.ENABLE_GET_SUB_COMMENTS:
+            utils.logger.info(
+                f"[XiaoHongShuClient.get_comments_all_sub_comments] Crawling sub_comment mode is not enabled"
+            )
+            return []
+        
+        # 检查是否达到最大递归深度
+        if max_depth > 0 and current_depth > max_depth:
+            return []
+        
+        result = []
+        for comment in comments:
+            note_id = comment.get("note_id")
+            
+            # 处理已存在的子评论
+            sub_comments = comment.get("sub_comments", [])
+            if sub_comments and callback:
+                await callback(note_id, sub_comments)
+                result.extend(sub_comments)
+            
+            # 检查是否有更多子评论需要获取
+            sub_comment_has_more = comment.get("sub_comment_has_more", False)
+            if not sub_comment_has_more:
+                continue
+            
+            root_comment_id = comment.get("id")
+            sub_comment_cursor = comment.get("sub_comment_cursor", "")
+            
+            # 获取所有子评论
+            child_comments = []
+            while sub_comment_has_more:
+                try:
+                    comments_res = await self.get_note_sub_comments(
+                        note_id=note_id,
+                        root_comment_id=root_comment_id,
+                        xsec_token=xsec_token,
+                        num=20,
+                        cursor=sub_comment_cursor,
+                    )
+                    
+                    sub_comment_has_more = comments_res.get("has_more", False)
+                    sub_comment_cursor = comments_res.get("cursor", "")
+                    
+                    if "comments" not in comments_res:
+                        utils.logger.info(
+                            f"[XiaoHongShuClient.get_comments_all_sub_comments] No 'comments' key found in response: {comments_res}"
+                        )
+                        break
+                    
+                    fetched_comments = comments_res["comments"]
+                    if not fetched_comments:
+                        break
+                    
+                    # 处理这一批子评论
+                    if callback:
+                        await callback(note_id, fetched_comments)
+                    
+                    child_comments.extend(fetched_comments)
+                    await asyncio.sleep(crawl_interval)
+                    
+                except Exception as e:
+                    utils.logger.error(f"[XiaoHongShuClient.get_comments_all_sub_comments] Error fetching sub comments: {e}")
+                    await asyncio.sleep(crawl_interval)
+            
+            # 将这些子评论添加到结果中
+            result.extend(child_comments)
+            
+            # 递归获取更深层级的子评论（如果需要）
+            if max_depth < 0 or current_depth < max_depth:
+                # 为每个子评论设置note_id
+                for child in child_comments:
+                    if "note_id" not in child:
+                        child["note_id"] = note_id
+                
+                # 递归调用，获取下一级子评论
+                deeper_comments = await self.get_comments_all_sub_comments(
+                    comments=child_comments,
+                    xsec_token=xsec_token,
+                    crawl_interval=crawl_interval,
+                    callback=callback,
+                    max_depth=max_depth,
+                    current_depth=current_depth + 1
+                )
+                
+                # 更新每个子评论的sub_comments字段
+                comment_map = {comment["id"]: comment for comment in child_comments if "id" in comment}
+                
+                # 按父评论ID分组
+                child_comment_groups = {}
+                for sub_comment in deeper_comments:
+                    if "target_comment" in sub_comment and "id" in sub_comment["target_comment"]:
+                        parent_id = sub_comment["target_comment"]["id"]
+                        if parent_id not in child_comment_groups:
+                            child_comment_groups[parent_id] = []
+                        child_comment_groups[parent_id].append(sub_comment)
+                
+                # 将子评论添加到对应的父评论中
+                for parent_id, children in child_comment_groups.items():
+                    if parent_id in comment_map:
+                        if "sub_comments" not in comment_map[parent_id]:
+                            comment_map[parent_id]["sub_comments"] = []
+                        comment_map[parent_id]["sub_comments"].extend(children)
+                
+                # 将更深层级的子评论添加到结果中
+                result.extend(deeper_comments)
+        
+        return result

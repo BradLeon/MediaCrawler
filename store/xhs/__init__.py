@@ -143,6 +143,8 @@ async def update_xhs_note_comment(note_id: str, comment_item: Dict):
     comment_id = comment_item.get("id")
     comment_pictures = [item.get("url_default", "") for item in comment_item.get("pictures", [])]
     target_comment = comment_item.get("target_comment", {})
+    is_author = 'is_author' in comment_item.get("show_tags",[])
+
     local_db_item = {
         "comment_id": comment_id, # 评论id
         "create_time": comment_item.get("create_time"), # 评论时间
@@ -151,6 +153,7 @@ async def update_xhs_note_comment(note_id: str, comment_item: Dict):
         "content": comment_item.get("content"), # 评论内容
         "user_id": user_info.get("user_id"), # 用户id
         "nickname": user_info.get("nickname"), # 用户昵称
+        "is_author": is_author, # 是否是作者
         "avatar": user_info.get("image"), # 用户头像
         "sub_comment_count": comment_item.get("sub_comment_count", 0), # 子评论数
         "pictures": ",".join(comment_pictures), # 评论图片
@@ -159,6 +162,8 @@ async def update_xhs_note_comment(note_id: str, comment_item: Dict):
         "like_count": comment_item.get("like_count", 0),
     }
     utils.logger.info(f"[store.xhs.update_xhs_note_comment] xhs note comment:{local_db_item}")
+
+    # 保存评论
     await XhsStoreFactory.create_store().store_comment(local_db_item)
 
 
