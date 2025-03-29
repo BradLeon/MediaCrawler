@@ -17,17 +17,18 @@ from playwright.async_api import BrowserContext, BrowserType
 
 class AbstractCrawler(ABC):
     @abstractmethod
-    async def start(self):
-        """
-        start crawler
-        """
+    async def start(self) -> None:
+        """Start crawler"""
         pass
 
     @abstractmethod
-    async def search(self):
-        """
-        search
-        """
+    async def stop(self) -> None:
+        """Stop crawler and clean up resources"""
+        pass
+
+    @abstractmethod
+    async def search(self) -> None:
+        """Search by keyword"""
         pass
 
     @abstractmethod
@@ -69,6 +70,10 @@ class AbstractStore(ABC):
 
     @abstractmethod
     async def store_comment(self, comment_item: Dict):
+        pass
+
+    @abstractmethod
+    async def convert_comments_to_conversations(self):
         pass
 
     # TODO support all platform

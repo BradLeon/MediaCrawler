@@ -67,11 +67,11 @@ ENABLE_GET_IMAGES = False
 ENABLE_GET_COMMENTS = True
 
 # 爬取一级评论的数量控制(单视频/帖子)
-CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 10
+CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 1000
 
 # 是否开启爬二级评论模式, 默认不开启爬二级评论
 # 老版本项目使用了 db, 则需参考 schema/tables.sql line 287 增加表字段
-ENABLE_GET_SUB_COMMENTS = False
+ENABLE_GET_SUB_COMMENTS = True
 
 # 已废弃⚠️⚠️⚠️指定小红书需要爬虫的笔记ID列表
 # 已废弃⚠️⚠️⚠️ 指定笔记ID笔记列表会因为缺少xsec_token和xsec_source参数导致爬取失败
@@ -82,7 +82,7 @@ ENABLE_GET_SUB_COMMENTS = False
 
 # 指定小红书需要爬虫的笔记URL列表, 目前要携带xsec_token和xsec_source参数
 XHS_SPECIFIED_NOTE_URL_LIST = [
-    "https://www.xiaohongshu.com/explore/66fad51c000000001b0224b8?xsec_token=AB3rO-QopW5sgrJ41GwN01WCXh6yWPxjSoFI9D5JIMgKw=&xsec_source=pc_search"
+    "https://www.xiaohongshu.com/explore/6751582c000000000703a4b5?xsec_token=ABnNAMdt7IJoQfO_vX4E2YzhxDW4XewzgJU1mAUYppOB8=&xsec_source=pc_user"
     # ........................
 ]
 
@@ -174,7 +174,7 @@ ENABLE_GET_WORDCLOUD = False
 # 自定义词语及其分组
 # 添加规则：xx:yy 其中xx为自定义添加的词组，yy为将xx该词组分到的组名。
 CUSTOM_WORDS = {
-    "零几": "年份",  # 将“零几”识别为一个整体
+    "零几": "年份",  # 将"零几"识别为一个整体
     "高频词": "专业术语",  # 示例自定义词
 }
 
@@ -194,3 +194,9 @@ END_DAY = '2024-01-01'
 # 若为 False，则忽略 START_DAY 与 END_DAY 设置的值
 # 若为 True，则按照 START_DAY 至 END_DAY 按照每一天进行筛选，这样能够突破 1000 条视频的限制，最大程度爬取该关键词下的所有视频
 ALL_DAY = False
+
+# 评论处理配置
+ENABLE_COMMENT_CONVERSATION = True  # 是否保留评论区对话
+COMMENT_CONVERSATION_MAX_DEPTH = 3  # 评论区对话最大保存轮次
+PROCESS_SPECIFIC_NOTE = ""  # 处理特定笔记的ID，为空则处理所有笔记
+COMMENT_CORPUS_DIR = "data/corpus"  # 评论语料库输出目录

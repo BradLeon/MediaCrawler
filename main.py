@@ -53,7 +53,11 @@ async def main():
         await db.init_db()
 
     crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
-    await crawler.start()
+    try:
+        await crawler.start()
+    finally:
+        # 确保无论任务是否完成或出现异常，stop方法都会被调用
+        await crawler.stop()
 
     if config.SAVE_DATA_OPTION == "db":
         await db.close()
