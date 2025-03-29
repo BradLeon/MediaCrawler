@@ -364,6 +364,30 @@ class XiaoHongShuCrawler(AbstractCrawler):
             task_list.append(task)
         await asyncio.gather(*task_list)
 
+    async def get_comments(self, note_id: str, xsec_token: str, note_detail: Dict = None, semaphore: asyncio.Semaphore = None):
+        """Get note comments with keyword filtering and quantity limitation"""
+        async with semaphore:
+            utils.logger.info(
+                f"[XiaoHongShuCrawler.get_comments] Begin get note id comments {note_id}"
+            )
+            # When proxy is not enabled, increase the crawling interval
+            if config.ENABLE_IP_PROXY:
+                crawl_interval = random.random()
+            else:
+                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
+            await self.xhs_client.get_note_all_comments(
+                note_id=note_id,
+                xsec_token=xsec_token,
+                crawl_interval=crawl_interval,
+                callback=xhs_store.batch_update_xhs_note_comments,
+                max_count=CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
+            )
+
+                    # 如果启用了评论对话保留，则保存评论到JSONL
+            if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
+                # 目前只支持json格式的转化（其他格式CSV、DB会报错）
+                await self.store.convert_comments_to_conversations()
+
     @staticmethod
     def format_proxy_info(
         ip_proxy_info: IpInfoModel,
@@ -499,30 +523,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
             extension_file_name = f"{videoNum}.mp4"
             videoNum += 1
             await xhs_store.update_xhs_note_image(note_id, content, extension_file_name)
-
-    async def get_comments(self, note_id: str, xsec_token: str, note_detail: Dict = None, semaphore: asyncio.Semaphore = None):
-        """Get note comments with keyword filtering and quantity limitation"""
-        async with semaphore:
-            utils.logger.info(
-                f"[XiaoHongShuCrawler.get_comments] Begin get note id comments {note_id}"
-            )
-            # When proxy is not enabled, increase the crawling interval
-            if config.ENABLE_IP_PROXY:
-                crawl_interval = random.random()
-            else:
-                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
-            await self.xhs_client.get_note_all_comments(
-                note_id=note_id,
-                xsec_token=xsec_token,
-                crawl_interval=crawl_interval,
-                callback=xhs_store.batch_update_xhs_note_comments,
-                max_count=CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
-            )
-
-                    # 如果启用了评论对话保留，则保存评论到JSONL
-            if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
-                # 目前只支持json格式的转化（其他格式CSV、DB会报错）
-                await self.store.convert_comments_to_conversations()
 
     async def stop(self):
         """Stop crawler and clean up resources"""
