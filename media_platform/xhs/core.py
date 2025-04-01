@@ -62,19 +62,19 @@ class XiaoHongShuCrawler(AbstractCrawler):
             )
 
         async with async_playwright() as playwright:
-            # Launch a browser context.
+            # 先启动浏览器但不使用持久化上下文
             chromium = playwright.chromium
             self.browser_context = await self.launch_browser(
                 chromium, None, self.user_agent, headless=config.HEADLESS
             )
-            # stealth.min.js is a js script to prevent the website from detecting the crawler.
+            # stealth.min.js to prevent detection
             await self.browser_context.add_init_script(path="libs/stealth.min.js")
-            # add a cookie attribute webId to avoid the appearance of a sliding captcha on the webpage
+            # add webId cookie to avoid sliding captcha
             await self.browser_context.add_cookies(
                 [
                     {
                         "name": "webId",
-                        "value": "xxx123",  # any value
+                        "value": "xxx123",
                         "domain": ".xiaohongshu.com",
                         "path": "/",
                     }
@@ -83,20 +83,43 @@ class XiaoHongShuCrawler(AbstractCrawler):
             self.context_page = await self.browser_context.new_page()
             await self.context_page.goto(self.index_url)
 
-            # Create a client to interact with the xiaohongshu website.
+            # 创建客户端和尝试登录
             self.xhs_client = await self.create_xhs_client(httpx_proxy_format)
-            if not await self.xhs_client.pong():
+            login_successful = await self.xhs_client.pong()
+            
+            # 如果启用了保存登录状态但当前没有登录成功，尝试从保存的cookies登录
+            if not login_successful and config.SAVE_LOGIN_STATE:
+                login_obj = XiaoHongShuLogin(
+                    login_type="cookie",
+                    login_phone="",
+                    browser_context=self.browser_context,
+                    context_page=self.context_page,
+                    cookie_str=config.COOKIES,
+                )
+                # 尝试加载保存的cookies
+                cookies = await login_obj.load_saved_cookies()
+                if cookies:
+                    await self.browser_context.add_cookies(cookies)
+                    await self.context_page.reload()
+                    # 更新客户端cookies
+                    await self.xhs_client.update_cookies(browser_context=self.browser_context)
+                    login_successful = await self.xhs_client.pong()
+            
+            # 如果仍未登录成功，使用配置的登录方式
+            if not login_successful:
                 login_obj = XiaoHongShuLogin(
                     login_type=config.LOGIN_TYPE,
-                    login_phone="",  # input your phone number
+                    login_phone="",
                     browser_context=self.browser_context,
                     context_page=self.context_page,
                     cookie_str=config.COOKIES,
                 )
                 await login_obj.begin()
-                await self.xhs_client.update_cookies(
-                    browser_context=self.browser_context
-                )
+                await self.xhs_client.update_cookies(browser_context=self.browser_context)
+                
+                # 如果启用了保存登录状态，保存cookies
+                if config.SAVE_LOGIN_STATE:
+                    await login_obj.save_cookies()
 
             crawler_type_var.set(config.CRAWLER_TYPE)
             if config.CRAWLER_TYPE == "search":
@@ -201,6 +224,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
             if createor_info:
                 await xhs_store.save_creator(user_id, creator=createor_info)
 
+                print("after get creator info", createor_info.get("nickname") if createor_info else None)
+
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
                 crawl_interval = random.random()
@@ -210,8 +235,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
             all_notes_list = await self.xhs_client.get_all_notes_by_creator(
                 user_id=user_id,
                 crawl_interval=crawl_interval,
-                callback=self.fetch_creator_notes_detail,
+                callback=self.fetch_creator_notes_detail
             )
+            
+            print("after get all notes size:", len(all_notes_list))
 
             note_ids = []
             xsec_tokens = []
@@ -266,6 +293,12 @@ class XiaoHongShuCrawler(AbstractCrawler):
         note_details = await asyncio.gather(*get_note_detail_task_list)
         for note_detail in note_details:
             if note_detail:
+                # 增加过滤条件： 时间过滤条件&点赞数过滤条件
+                last_update_time = note_detail.get("last_update_time", 0) 
+                comment_count = note_detail.get("interact_info", {}).interact_info.get("comment_count") # 点赞数
+                if (comment_count < config.COMMENT_COUNT_THRESHOLD and last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
+                    continue
+
                 need_get_comment_note_ids.append(note_detail.get("note_id", ""))
                 xsec_tokens.append(note_detail.get("xsec_token", ""))
                 await xhs_store.update_xhs_note(note_detail)
@@ -375,6 +408,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 crawl_interval = random.random()
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
+            
             await self.xhs_client.get_note_all_comments(
                 note_id=note_id,
                 xsec_token=xsec_token,
@@ -383,10 +417,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 max_count=CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
             )
 
-                    # 如果启用了评论对话保留，则保存评论到JSONL
-            if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
-                # 目前只支持json格式的转化（其他格式CSV、DB会报错）
-                await self.store.convert_comments_to_conversations()
+        # 如果启用了评论对话保留，则保存评论到JSONL
+        if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
+            # 目前只支持json格式的转化（其他格式CSV、DB会报错）
+            await self.store.convert_comments_to_conversations()
 
     @staticmethod
     def format_proxy_info(
@@ -401,6 +435,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
         httpx_proxy = {
             f"{ip_proxy_info.protocol}": f"http://{ip_proxy_info.user}:{ip_proxy_info.password}@{ip_proxy_info.ip}:{ip_proxy_info.port}"
         }
+        # test
+        print("playwright_proxy:", playwright_proxy)
+        print("httpx_proxy:", httpx_proxy)
+        print("ip_proxy_info:", ip_proxy_info)
         return playwright_proxy, httpx_proxy
 
     async def create_xhs_client(self, httpx_proxy: Optional[str]) -> XiaoHongShuClient:
@@ -411,15 +449,27 @@ class XiaoHongShuCrawler(AbstractCrawler):
         cookie_str, cookie_dict = utils.convert_cookies(
             await self.browser_context.cookies()
         )
+        
+        # 添加更多的请求头，使请求更接近真实浏览器
+        headers = {
+            "User-Agent": self.user_agent,
+            "Cookie": cookie_str,
+            "Origin": "https://www.xiaohongshu.com",
+            "Referer": "https://www.xiaohongshu.com",
+            "Content-Type": "application/json;charset=UTF-8",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "sec-ch-ua": '"Google Chrome";v="133", "Not(A:Brand";v="8", "Chromium";v="133"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+        }
+        
         xhs_client_obj = XiaoHongShuClient(
             proxies=httpx_proxy,
-            headers={
-                "User-Agent": self.user_agent,
-                "Cookie": cookie_str,
-                "Origin": "https://www.xiaohongshu.com",
-                "Referer": "https://www.xiaohongshu.com",
-                "Content-Type": "application/json;charset=UTF-8",
-            },
+            headers=headers,
             playwright_page=self.context_page,
             cookie_dict=cookie_dict,
         )

@@ -13,6 +13,9 @@ import asyncio
 import functools
 import sys
 from typing import Optional
+import os
+import json
+import aiofiles
 
 from playwright.async_api import BrowserContext, Page
 from tenacity import (RetryError, retry, retry_if_result, stop_after_attempt,
@@ -68,6 +71,7 @@ class XiaoHongShuLogin(AbstractLogin):
             await self.login_by_cookies()
         else:
             raise ValueError("[XiaoHongShuLogin.begin]I nvalid Login Type Currently only supported qrcode or phone or cookies ...")
+        await self.save_cookies()
 
     async def login_by_mobile(self):
         """Login xiaohongshu by mobile"""
@@ -195,3 +199,65 @@ class XiaoHongShuLogin(AbstractLogin):
                 'domain': ".xiaohongshu.com",
                 'path': "/"
             }])
+
+    async def clear_browser_context(self):
+        # 清除cookies和缓存
+        await self.browser_context.clear_cookies()
+        # 关闭当前浏览器上下文
+        await self.browser_context.close()
+        # 创建新的浏览器上下文
+        # 注意：这里需要根据你的项目实际情况创建新的浏览器上下文
+
+    async def save_cookies(self):
+        """保存当前的cookies到文件"""
+        cookies = await self.browser_context.cookies()
+        cookies_file = os.path.join(os.getcwd(), "browser_data", f"xhs_cookies_{config.PLATFORM}.json")
+        
+        # 确保目录存在
+        os.makedirs(os.path.dirname(cookies_file), exist_ok=True)
+        
+        # 保存cookies到文件
+        async with aiofiles.open(cookies_file, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(cookies, ensure_ascii=False))
+        
+        utils.logger.info(f"[XiaoHongShuLogin.save_cookies] Cookies saved to {cookies_file}")
+
+    async def update_cookies(self):
+        """更新cookies"""
+        if config.SAVE_LOGIN_STATE:
+            # 检查保存的cookies是否有效
+            saved_cookies = await self.load_saved_cookies()
+            if saved_cookies:
+                # 使用保存的cookies进行登录
+                await self.browser_context.add_cookies(saved_cookies)
+                utils.logger.info("Loaded saved cookies.")
+            else:
+                # 如果没有有效的cookies，执行扫码登录
+                await self.begin()
+        else:
+            # 不保存登录状态，直接执行扫码登录
+            await self.begin()
+
+    async def load_saved_cookies(self):
+        """从文件加载保存的cookies"""
+        cookies_file = os.path.join(os.getcwd(), "browser_data", f"xhs_cookies_{config.PLATFORM}.json")
+        
+        if not os.path.exists(cookies_file):
+            utils.logger.info(f"[XiaoHongShuLogin.load_saved_cookies] Cookies file not found: {cookies_file}")
+            return None
+        
+        try:
+            async with aiofiles.open(cookies_file, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                cookies = json.loads(content)
+                
+                # 检查cookies是否有效（至少检查是否包含web_session）
+                if not any(cookie.get('name') == 'web_session' for cookie in cookies):
+                    utils.logger.info("[XiaoHongShuLogin.load_saved_cookies] Invalid cookies: web_session not found")
+                    return None
+                
+                utils.logger.info(f"[XiaoHongShuLogin.load_saved_cookies] Loaded cookies from {cookies_file}")
+                return cookies
+        except Exception as e:
+            utils.logger.error(f"[XiaoHongShuLogin.load_saved_cookies] Error loading cookies: {e}")
+            return None

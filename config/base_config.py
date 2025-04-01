@@ -22,16 +22,16 @@ CRAWLER_TYPE = (
     "search"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)
 )
 # 自定义User Agent（暂时仅对XHS有效）
-UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
-
+# UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
+UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
 # 是否开启 IP 代理
-ENABLE_IP_PROXY = False
+ENABLE_IP_PROXY = True
 
 # 未启用代理时的最大爬取间隔，单位秒（暂时仅对XHS有效）
 CRAWLER_MAX_SLEEP_SEC = 2
 
 # 代理IP池数量
-IP_PROXY_POOL_COUNT = 2
+IP_PROXY_POOL_COUNT = 1000
 
 # 代理IP提供商名称
 IP_PROXY_PROVIDER_NAME = "kuaidaili"
@@ -132,8 +132,35 @@ TIEBA_CREATOR_URL_LIST = [
 
 # 指定小红书创作者ID列表
 XHS_CREATOR_ID_LIST = [
-    "63e36c9a000000002703502b",
-    # ........................
+    #美妆护肤赛道
+    #逐本
+    "5c74a59f0000000011027e27",
+    #敷尔佳
+    "5b9890d83cac8b0001b8486f",
+    #至本
+    "5c4bc681000000001003d41d",
+    #HBN
+    "5bfb58078086b80001dbd02f",
+    #毕生之研懂事长
+    "55d1a291e4b1cf15db1d65c0",
+    #毕生之研
+    "56e0ddd23460945c368439d6",
+
+    #花西子
+    "55d34272f5a26377d1b784dd",
+
+    ##母婴用品赛道
+    #SnowBear小白熊
+    "5bbafbd598e3dc0001b68aba",
+    #Purcotton全棉时代
+    "58f6d5d25e87e7083547d51d",
+    #EMXEE嫚熙
+    "5919e02f50c4b421318e29eb",
+    #Hape哈佩
+    "5a57013ae8ac2b34fe6611a6",
+    #小鹿蓝蓝
+    "5bd326b4f16b990001bc410b"
+     # ........................
 ]
 
 # 指定Dy创作者ID列表(sec_id)
@@ -200,3 +227,9 @@ ENABLE_COMMENT_CONVERSATION = True  # 是否保留评论区对话
 COMMENT_CONVERSATION_MAX_DEPTH = 3  # 评论区对话最大保存轮次
 PROCESS_SPECIFIC_NOTE = ""  # 处理特定笔记的ID，为空则处理所有笔记
 COMMENT_CORPUS_DIR = "data/corpus"  # 评论语料库输出目录
+
+
+# 内容过滤条件
+# 帖子最后更新时间
+LAST_UPDATE_TIME_THRESHOLD = 1672502400000 # 2023-01-01 00:00:00
+COMMENT_COUNT_THRESHOLD = 10 # 评论数阈值
