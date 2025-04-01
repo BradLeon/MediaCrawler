@@ -168,23 +168,41 @@ class XiaoHongShuClient(AbstractApiClient):
 
     async def pong(self) -> bool:
         """
-        用于检查登录态是否失效了
-        Returns:
-
+        Check if login is successful by visiting user profile
+        Returns True if logged in, False otherwise
         """
-        """get a note to check if login state is ok"""
-        utils.logger.info("[XiaoHongShuClient.pong] Begin to pong xhs...")
-        ping_flag = False
         try:
-            note_card: Dict = await self.get_note_by_keyword(keyword="小红书")
-            if note_card.get("items"):
-                ping_flag = True
+            # 检查cookie而不是调用API
+            cookie_dict = self.cookie_dict or {}
+            web_session = cookie_dict.get("web_session", "")
+            
+            if not web_session:
+                utils.logger.error("[XiaoHongShuClient.pong] No web_session cookie found")
+                return False
+                
+            # 如果有web_session，尝试获取用户信息API
+            try:
+                # 使用一个简单的API检查登录状态
+                profile_data = await self.get("/user/me")
+                if profile_data and profile_data.get("userId"):
+                    utils.logger.info(f"[XiaoHongShuClient.pong] Login successful, user ID: {profile_data.get('userId')}")
+                    return True
+            except Exception as e:
+                # 尝试从当前页面内容判断登录状态
+                if self.playwright_page:
+                    content = await self.playwright_page.content()
+                    # 检查页面是否包含登录成功的标记
+                    if "isLogin: true" in content or "用户信息" in content:
+                        utils.logger.info("[XiaoHongShuClient.pong] Login detected from page content")
+                        # 更新cookies以确保同步
+                        await self.update_cookies(self.playwright_page.context)
+                        return True
+                
+                utils.logger.error(f"[XiaoHongShuClient.pong] Ping xhs failed: {e}, and try to login again...")
+                return False
         except Exception as e:
-            utils.logger.error(
-                f"[XiaoHongShuClient.pong] Ping xhs failed: {e}, and try to login again..."
-            )
-            ping_flag = False
-        return ping_flag
+            utils.logger.error(f"[XiaoHongShuClient.pong] Ping xhs failed: {e}, and try to login again...")
+            return False
 
     async def update_cookies(self, browser_context: BrowserContext):
         """

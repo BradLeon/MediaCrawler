@@ -80,6 +80,8 @@ class ProxyIpPool:
         if len(self.proxy_list) == 0:
             await self._reload_proxies()
 
+        # test
+        print("self.proxy_list.len:", len(self.proxy_list))
         proxy = random.choice(self.proxy_list)
         self.proxy_list.remove(proxy) # 取出来一个IP就应该移出掉
         if self.enable_validate_ip:

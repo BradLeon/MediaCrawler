@@ -504,7 +504,149 @@ class XhsJsonStoreImplement(AbstractStore):
         else:
             utils.logger.warning(f"未找到有效对话，未生成文件")
 
+    async def build_comment_conversations_v3(self, input_file: str, output_dir: str = None) -> None:
+        """
+        从评论JSON文件构建扁平化的对话链结构并保存为单个JSONL文件
+        每条从根到叶子的完整路径作为一个独立对话，适合向量检索
+        
+        Args:
+            input_file: 输入的评论JSON文件路径
+            output_dir: 输出目录，默认为config.COMMENT_CORPUS_DIR
+        """
+        import uuid
+        
+        # 读取评论数据
+        with open(input_file, 'r', encoding='utf-8') as f:
+            comments = json.load(f)
+        
+        pathlib.Path(self.json_store_path).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(self.words_store_path).mkdir(parents=True, exist_ok=True)
+        save_file_name = self.make_save_jsonl_file_name(store_type="comment_conversations_flat")
 
+        # 按笔记ID分组
+        notes_comments = {}
+        for comment in comments:
+            note_id = comment.get('note_id')
+            if not note_id:
+                continue
+            
+            if note_id not in notes_comments:
+                notes_comments[note_id] = []
+            
+            notes_comments[note_id].append(comment)
+        
+        # 所有扁平化对话链的集合
+        all_conversation_chains = []
+        
+        # 处理每个笔记的评论
+        for note_id, comments_list in notes_comments.items():
+            # 创建评论ID到评论的映射
+            comment_map = {comment.get('comment_id'): comment for comment in comments_list}
+            
+            # 构建评论树结构
+            comment_tree = {}
+            for comment in comments_list:
+                comment_id = comment.get('comment_id')
+                parent_id = comment.get('parent_comment_id')
+                
+                # 初始化当前评论的子评论列表
+                if comment_id not in comment_tree:
+                    comment_tree[comment_id] = []
+                
+                # 如果是子评论，将其添加到父评论的子评论列表中
+                if parent_id and parent_id != 0:
+                    if parent_id not in comment_tree:
+                        comment_tree[parent_id] = []
+                    comment_tree[parent_id].append(comment_id)
+            
+            # 找出所有根评论（parent_comment_id为0的评论）
+            root_comments = [comment for comment in comments_list if comment.get('parent_comment_id') == 0 or not comment.get('parent_comment_id')]
+            
+            # DFS遍历构建所有从根到叶子的路径
+            def build_comment_path(comment_id, path=None, depth=0, max_depth=config.COMMENT_CONVERSATION_MAX_DEPTH):
+                if depth > max_depth:  # 防止无限递归
+                    return []
+                
+                if comment_id not in comment_map:
+                    return []
+                
+                if path is None:
+                    path = []
+                
+                # 获取当前评论
+                comment = comment_map[comment_id]
+                
+                # 构建当前评论节点
+                comment_node = {
+                    "note_id": note_id,
+                    "conversation_id": str(uuid.uuid4()),  # 使用UUID生成唯一对话ID
+                    "comment_id": comment.get('comment_id'),
+                    "parent_id": comment.get('parent_comment_id') if comment.get('parent_comment_id') != 0 else None,
+                    "user_id": comment.get('user_id'),
+                    "user_name": comment.get('nickname'),
+                    "content": comment.get('content'),
+                    "pictures": comment.get('pictures', ''),
+                    "create_time": comment.get('create_time'),
+                    "depth": depth,
+                    "like_count": comment.get('like_count', 0),
+                    "is_author": comment.get('is_author', False)
+                }
+                
+                # 复制当前路径并添加当前节点
+                current_path = path + [comment_node]
+                
+                # 如果没有子评论，这是一条完整的路径
+                if comment_id not in comment_tree or not comment_tree[comment_id]:
+                    return [current_path]
+                
+                # 有子评论，继续DFS遍历
+                all_paths = []
+                for child_id in comment_tree[comment_id]:
+                    child_paths = build_comment_path(
+                        child_id, 
+                        current_path,
+                        depth + 1, 
+                        max_depth
+                    )
+                    all_paths.extend(child_paths)
+                
+                # 如果没有任何子路径返回(可能是因为超过深度限制)，也将当前路径作为一条完整路径
+                if not all_paths:
+                    return [current_path]
+                    
+                return all_paths
+            
+            # 对每个根评论，构建所有可能的对话链
+            for root in root_comments:
+                root_id = root.get('comment_id')
+                # 只处理有回复的根评论，或者是作者的评论
+                if (root_id in comment_tree and comment_tree[root_id]) or root.get('is_author', False):
+                    # 构建此根评论的所有对话链
+                    comment_paths = build_comment_path(root_id)
+                    
+                    # 为每条链路分配唯一ID并保存
+                    for path in comment_paths:
+                        # 只保留有实际对话的路径(至少两条消息)
+                        if len(path) >= 2:
+                            # 为路径中的每个评论添加对话ID
+                            for node in path:
+                                node_with_conv_id = node.copy()
+                                all_conversation_chains.append(node_with_conv_id)
+        
+        # 保存所有对话链到一个JSONL文件
+        if all_conversation_chains:
+            # 排序，确保同一对话的消息相邻且按深度排序
+            all_conversation_chains.sort(key=lambda x: (x["conversation_id"], x["depth"]))
+            
+            async with aiofiles.open(save_file_name, 'w', encoding='utf-8') as f:
+                for comment in all_conversation_chains:
+                    await f.write(json.dumps(comment, ensure_ascii=False) + '\n')
+            
+            conversation_count = len(set(comment["conversation_id"] for comment in all_conversation_chains))
+            message_count = len(all_conversation_chains)
+            utils.logger.info(f"已将所有笔记的 {conversation_count} 条对话链（共 {message_count} 条消息）保存到 {save_file_name}")
+        else:
+            utils.logger.warning(f"未找到有效对话，未生成文件")
 
     # 使用示例
     async def convert_comments_to_conversations(self):
@@ -516,7 +658,7 @@ class XhsJsonStoreImplement(AbstractStore):
         input_file = save_file_name
         
         if os.path.exists(input_file):
-            await self.build_comment_conversations(input_file)
+            await self.build_comment_conversations_v3(input_file)
             utils.logger.info(f"已完成评论转换为对话树: {input_file}")
         else:
             utils.logger.error(f"评论文件不存在: {input_file}")
