@@ -51,13 +51,13 @@ class XiaoHongShuCrawler(AbstractCrawler):
         self.store = XhsStoreFactory.create_store()
 
     async def start(self) -> None:
-        playwright_proxy_format, httpx_proxy_format = None, None
+        playwright_proxy, httpx_proxy = None, None
         if config.ENABLE_IP_PROXY:
             ip_proxy_pool = await create_ip_pool(
                 config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
             )
             ip_proxy_info: IpInfoModel = await ip_proxy_pool.get_proxy()
-            playwright_proxy_format, httpx_proxy_format = self.format_proxy_info(
+            playwright_proxy, httpx_proxy = self.format_proxy_info(
                 ip_proxy_info
             )
 
@@ -84,7 +84,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
             await self.context_page.goto(self.index_url)
 
             # 创建客户端和尝试登录
-            self.xhs_client = await self.create_xhs_client(httpx_proxy_format)
+            self.xhs_client = await self.create_xhs_client(httpx_proxy)
             login_successful = await self.xhs_client.pong()
             
             # 如果启用了保存登录状态但当前没有登录成功，尝试从保存的cookies登录

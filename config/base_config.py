@@ -25,7 +25,7 @@ CRAWLER_TYPE = (
 # UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
 UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
 # 是否开启 IP 代理
-ENABLE_IP_PROXY = True
+ENABLE_IP_PROXY = False
 
 # 未启用代理时的最大爬取间隔，单位秒（暂时仅对XHS有效）
 CRAWLER_MAX_SLEEP_SEC = 2
@@ -133,10 +133,10 @@ TIEBA_CREATOR_URL_LIST = [
 # 指定小红书创作者ID列表
 XHS_CREATOR_ID_LIST = [
     #美妆护肤赛道
-    #逐本
-    "5c74a59f0000000011027e27",
     #敷尔佳
     "5b9890d83cac8b0001b8486f",
+    #逐本
+    "5c74a59f0000000011027e27",
     #至本
     "5c4bc681000000001003d41d",
     #HBN
