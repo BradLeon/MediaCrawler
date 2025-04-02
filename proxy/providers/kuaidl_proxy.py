@@ -59,7 +59,7 @@ def parse_kuaidaili_proxy(proxy_info: str) -> KuaidailiProxyModel:
 class KuaiDaiLiProxy(ProxyProvider):
     def __init__(self, kdl_user_name: str, kdl_user_pwd: str, kdl_secret_id: str, kdl_signature: str):
         """
-
+            快代理隧道代理实现
         Args:
             kdl_user_name:
             kdl_user_pwd:
@@ -67,6 +67,7 @@ class KuaiDaiLiProxy(ProxyProvider):
         self.kdl_user_name = kdl_user_name
         self.kdl_user_pwd = kdl_user_pwd
         self.api_base = "https://dps.kdlapi.com/"
+        self.tunnel = "g398.kdltps.com:15818"
         self.secret_id = kdl_secret_id
         self.signature = kdl_signature
         self.ip_cache = IpCache()
@@ -131,6 +132,62 @@ class KuaiDaiLiProxy(ProxyProvider):
         return ip_cache_list + ip_infos
 
 
+
+    async def get_tunnel_proxies(self) -> IpInfoModel:
+        """
+        快代理实现
+        Args:
+            num:
+
+        Returns:
+
+        """
+
+
+
+        ip_infos: List[IpInfoModel] = []
+        async with httpx.AsyncClient() as client:
+            response = await client.get(self.api_base + uri, params=self.params)
+
+            if response.status_code != 200:
+                utils.logger.error(f"[KuaiDaiLiProxy.get_proxies] statuc code not 200 and response.txt:{response.text}")
+                raise Exception("get ip error from proxy provider and status code not 200 ...")
+
+            ip_response: Dict = response.json()
+            if ip_response.get("code") != 0:
+                utils.logger.error(f"[KuaiDaiLiProxy.get_proxies]  code not 0 and msg:{ip_response.get('msg')}")
+                raise Exception("get ip error from proxy provider and  code not 0 ...")
+
+            proxy_list: List[str] = ip_response.get("data", {}).get("proxy_list")
+            for proxy in proxy_list:
+                proxy_model = parse_kuaidaili_proxy(proxy)
+                ip_info_model = IpInfoModel(
+                    ip=proxy_model.ip,
+                    port=proxy_model.port,
+                    user=self.kdl_user_name,
+                    password=self.kdl_user_pwd,
+                    expired_time_ts=proxy_model.expire_ts,
+
+                )
+                ip_key = f"{self.proxy_brand_name}_{ip_info_model.ip}_{ip_info_model.port}"
+                self.ip_cache.set_ip(ip_key, ip_info_model.model_dump_json(), ex=ip_info_model.expired_time_ts)
+                ip_infos.append(ip_info_model)
+
+
+            ip_info_model = IpInfoModel(
+                    ip=proxy_model.ip,
+                    port=proxy_model.port,
+                    user=self.kdl_user_name,
+                    password=self.kdl_user_pwd,
+                    expired_time_ts=proxy_model.expire_ts,
+
+                )
+
+        return ip_cache_list + ip_infos
+
+
+
+
 def new_kuai_daili_proxy() -> KuaiDaiLiProxy:
     """
     构造快代理HTTP实例
@@ -138,8 +195,8 @@ def new_kuai_daili_proxy() -> KuaiDaiLiProxy:
 
     """
     return KuaiDaiLiProxy(
-        kdl_secret_id=os.getenv("kdl_secret_id", "你的快代理secert_id"),
-        kdl_signature=os.getenv("kdl_signature", "你的快代理签名"),
-        kdl_user_name=os.getenv("kdl_user_name", "你的快代理用户名"),
-        kdl_user_pwd=os.getenv("kdl_user_pwd", "你的快代理密码"),
+        kdl_secret_id=os.getenv("kdl_tunnel_proxy_secret_id", "你的快代理secert_id"),
+        kdl_signature=os.getenv("kdl_tunnel_proxy_signature", "你的快代理签名"),
+        kdl_user_name=os.getenv("kdl_tunnel_proxy_user_name", "你的快代理用户名"),
+        kdl_user_pwd=os.getenv("kdl_tunnel_proxy_pwd", "你的快代理密码"),
     )

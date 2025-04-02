@@ -22,13 +22,26 @@ from pydantic import BaseModel, Field
 class ProviderNameEnum(Enum):
     JISHU_HTTP_PROVIDER: str = "jishuhttp"
     KUAI_DAILI_PROVIDER: str = "kuaidaili"
+    SHENLONG_HTTP_PROVIDER: str = "shenlonghttp"
 
-
-class IpInfoModel(BaseModel):
+class IpInfoModelOrg(BaseModel):
     """Unified IP model"""
     ip: str = Field(title="ip")
     port: int = Field(title="端口")
     user: str = Field(title="IP代理认证的用户名")
     protocol: str = Field(default="https://", title="代理IP的协议")
     password: str = Field(title="IP代理认证用户的密码")
+    expired_time_ts: Optional[int] = Field(title="IP 过期时间")
+
+
+class IpInfoModel(BaseModel):
+    """Unified IP model"""
+    ip: str = Field(title="ip")
+    port: int = Field(title="端口")
+    prov: str = Field(default="北京", title="IP省份")
+    city: str = Field(default="北京", title="IP城市")
+    user: str = Field(title="IP代理认证的用户名")
+    password: str = Field(title="IP代理认证用户的密码")
+    protocol: str = Field(default="https://", title="代理IP的协议")
+    tunnel: str = Field(default="g398.kdltps.com:15818", title="IP代理的隧道(默认采用快代理的服务器)")
     expired_time_ts: Optional[int] = Field(title="IP 过期时间")

@@ -20,7 +20,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 import config
-from proxy.providers import new_jisu_http_proxy, new_kuai_daili_proxy
+from proxy.providers import shenlong_proxy, new_kuai_daili_proxy
 from tools import utils
 
 from .base_proxy import ProxyProvider
@@ -99,7 +99,7 @@ class ProxyIpPool:
 
 
 IpProxyProvider: Dict[str, ProxyProvider] = {
-    ProviderNameEnum.JISHU_HTTP_PROVIDER.value: new_jisu_http_proxy(),
+    ProviderNameEnum.SHENLONG_HTTP_PROVIDER.value: shenlong_proxy.new_shenlong_http_proxy(),
     ProviderNameEnum.KUAI_DAILI_PROVIDER.value: new_kuai_daili_proxy()
 }
 

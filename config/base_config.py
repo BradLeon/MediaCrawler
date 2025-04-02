@@ -25,13 +25,13 @@ CRAWLER_TYPE = (
 # UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
 UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
 # 是否开启 IP 代理
-ENABLE_IP_PROXY = False
+ENABLE_IP_PROXY = True
 
 # 未启用代理时的最大爬取间隔，单位秒（暂时仅对XHS有效）
-CRAWLER_MAX_SLEEP_SEC = 2
+CRAWLER_MAX_SLEEP_SEC = 3
 
 # 代理IP池数量
-IP_PROXY_POOL_COUNT = 1000
+IP_PROXY_POOL_COUNT = 100
 
 # 代理IP提供商名称
 IP_PROXY_PROVIDER_NAME = "kuaidaili"
@@ -55,7 +55,7 @@ USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
 START_PAGE = 1
 
 # 爬取视频/帖子的数量控制
-CRAWLER_MAX_NOTES_COUNT = 200
+CRAWLER_MAX_NOTES_COUNT = 300
 
 # 并发爬虫数量控制
 MAX_CONCURRENCY_NUM = 1
@@ -67,7 +67,7 @@ ENABLE_GET_IMAGES = False
 ENABLE_GET_COMMENTS = True
 
 # 爬取一级评论的数量控制(单视频/帖子)
-CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 1000
+CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 300
 
 # 是否开启爬二级评论模式, 默认不开启爬二级评论
 # 老版本项目使用了 db, 则需参考 schema/tables.sql line 287 增加表字段
@@ -133,14 +133,14 @@ TIEBA_CREATOR_URL_LIST = [
 # 指定小红书创作者ID列表
 XHS_CREATOR_ID_LIST = [
     #美妆护肤赛道
+    #HBN
+    "5bfb58078086b80001dbd02f",
     #敷尔佳
     "5b9890d83cac8b0001b8486f",
     #逐本
     "5c74a59f0000000011027e27",
     #至本
     "5c4bc681000000001003d41d",
-    #HBN
-    "5bfb58078086b80001dbd02f",
     #毕生之研懂事长
     "55d1a291e4b1cf15db1d65c0",
     #毕生之研
