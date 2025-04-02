@@ -55,7 +55,7 @@ USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
 START_PAGE = 1
 
 # 爬取视频/帖子的数量控制
-CRAWLER_MAX_NOTES_COUNT = 300
+CRAWLER_MAX_NOTES_COUNT = 1000
 
 # 并发爬虫数量控制
 MAX_CONCURRENCY_NUM = 1
@@ -133,6 +133,10 @@ TIEBA_CREATOR_URL_LIST = [
 # 指定小红书创作者ID列表
 XHS_CREATOR_ID_LIST = [
     #美妆护肤赛道
+    #毕生之研懂事长
+    "55d1a291e4b1cf15db1d65c0",
+    #毕生之研
+    "56e0ddd23460945c368439d6",
     #HBN
     "5bfb58078086b80001dbd02f",
     #敷尔佳
@@ -141,10 +145,6 @@ XHS_CREATOR_ID_LIST = [
     "5c74a59f0000000011027e27",
     #至本
     "5c4bc681000000001003d41d",
-    #毕生之研懂事长
-    "55d1a291e4b1cf15db1d65c0",
-    #毕生之研
-    "56e0ddd23460945c368439d6",
 
     #花西子
     "55d34272f5a26377d1b784dd",
@@ -231,5 +231,5 @@ COMMENT_CORPUS_DIR = "data/corpus"  # 评论语料库输出目录
 
 # 内容过滤条件
 # 帖子最后更新时间
-LAST_UPDATE_TIME_THRESHOLD = 1672502400000 # 2023-01-01 00:00:00
+LAST_UPDATE_TIME_THRESHOLD = 1704038400000   # 2024-01-01 00:00:00
 COMMENT_COUNT_THRESHOLD = 10 # 评论数阈值

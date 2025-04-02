@@ -238,7 +238,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
-               
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
@@ -246,22 +245,19 @@ class XiaoHongShuCrawler(AbstractCrawler):
             all_notes_list = await self.xhs_client.get_all_notes_by_creator(
                 user_id=user_id,
                 crawl_interval=crawl_interval,
+                max_count=config.CRAWLER_MAX_NOTES_COUNT,
                 callback=self.fetch_creator_notes_detail
             )
             
-            print("after get all notes size:", len(all_notes_list))
+            print("[XiaoHongShuCrawler.get_all_notes_by_creator] after crawler get all notes size:", len(all_notes_list))
 
-            note_ids = []
-            xsec_tokens = []
-            for note_item in all_notes_list:
-                note_ids.append(note_item.get("note_id"))
-                xsec_tokens.append(note_item.get("xsec_token"))
-            await self.batch_get_note_comments(note_ids, xsec_tokens)
 
-    async def fetch_creator_notes_detail(self, note_list: List[Dict]):
+    async def fetch_creator_notes_detail(self, note_list: List[Dict]) -> List[str]:
         """
         Concurrently obtain the specified post list and save the data
         """
+        filtered_note_list = list()
+        xsec_tokens = list()
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
         task_list = [
             self.get_note_detail_async_task(
@@ -276,7 +272,21 @@ class XiaoHongShuCrawler(AbstractCrawler):
         note_details = await asyncio.gather(*task_list)
         for note_detail in note_details:
             if note_detail:
+                # 增加过滤条件： 时间过滤条件&点赞数过滤条件
+                last_update_time = note_detail.get("last_update_time", 0) 
+                comment_count = note_detail.get("interact_info", {}).interact_info.get("comment_count") # 点赞数
+                if (comment_count < config.COMMENT_COUNT_THRESHOLD and last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
+                    continue
                 await xhs_store.update_xhs_note(note_detail)
+                filtered_note_list.append(note_detail.get("note_id"))
+                xsec_tokens.append(note_detail.get("xsec_token"))
+
+        # 获取过滤后的笔记的评论
+        await self.batch_get_note_comments(filtered_note_list, xsec_tokens)
+    
+        # test
+        print("[XiaoHongShuCrawler.fetch_creator_notes_detail ] after filtered note_list size:", len(filtered_note_list))
+        return filtered_note_list
 
     async def get_specified_notes(self):
         """
@@ -421,7 +431,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
             )
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
-    
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
@@ -431,7 +440,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 xsec_token=xsec_token,
                 crawl_interval=crawl_interval,
                 callback=xhs_store.batch_update_xhs_note_comments,
-                max_count=CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
+                max_count=config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES,
             )
 
         # 如果启用了评论对话保留，则保存评论到JSONL

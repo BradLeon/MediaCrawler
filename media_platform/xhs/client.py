@@ -351,6 +351,10 @@ class XiaoHongShuClient(AbstractApiClient):
         comments_has_more = True
         comments_cursor = ""
         while comments_has_more and len(result) < max_count:
+
+            request_interval = random.uniform(10, 25)  # 随机增加2-7秒
+            await asyncio.sleep(request_interval)  # 设置请求时间间隔
+        
             comments_res = await self.get_note_comments(
                 note_id=note_id, xsec_token=xsec_token, cursor=comments_cursor
             )
@@ -426,6 +430,7 @@ class XiaoHongShuClient(AbstractApiClient):
         self,
         user_id: str,
         crawl_interval: float = 1.0,
+        max_count:  int = 300,
         callback: Optional[Callable] = None,
     ) -> List[Dict]:
         """
@@ -443,6 +448,10 @@ class XiaoHongShuClient(AbstractApiClient):
         notes_cursor = ""
         while notes_has_more:
             notes_res = await self.get_notes_by_creator(user_id, notes_cursor)
+
+            request_interval = random.uniform(5, 30)  # 随机增加2-7秒
+            await asyncio.sleep(request_interval)  # 设置请求时间间隔
+
             if not notes_res:
                 utils.logger.error(
                     f"[XiaoHongShuClient.get_notes_by_creator] The current creator may have been banned by xhs, so they cannot access the data."
@@ -463,10 +472,14 @@ class XiaoHongShuClient(AbstractApiClient):
             )
             if callback:
                 await callback(notes)
-            await asyncio.sleep(crawl_interval)
+            await asyncio.sleep(crawl_interval)  # 爬取间隔
             result.extend(notes)
-        return result
 
+            if len(result) >= max_count:
+                return result
+            
+        return result
+    
     async def get_note_short_url(self, note_id: str) -> Dict:
         """
         获取笔记的短链接
@@ -611,6 +624,8 @@ class XiaoHongShuClient(AbstractApiClient):
             # 获取所有子评论
             child_comments = []
             while sub_comment_has_more:
+                request_interval = random.uniform(10, 30)  # 随机增加2-7秒
+                await asyncio.sleep(request_interval)  # 设置请求时间间隔
                 try:
                     comments_res = await self.get_note_sub_comments(
                         note_id=note_id,
