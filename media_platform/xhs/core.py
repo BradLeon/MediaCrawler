@@ -221,7 +221,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
         )
         for user_id in config.XHS_CREATOR_ID_LIST:
             # 在获取创作者信息前模拟人类行为
-            await self.simulate_human_behavior(self.context_page)
+            # await self.simulate_human_behavior(self.context_page)
             
             # get creator detail info from web html content
             createor_info: Dict = await self.xhs_client.get_creator_info(
@@ -516,59 +516,28 @@ class XiaoHongShuCrawler(AbstractCrawler):
         """Launch browser and create browser context"""
         utils.logger.info("[XiaoHongShuCrawler.launch_browser] Begin launch chromium browser ...")
         
-        # 添加反检测参数
-        args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-web-security",
-            "--disable-features=IsolateOrigins,site-per-process",
-            "--disable-site-isolation-trials",
-            "--disable-extensions",
-            "--disable-component-extensions-with-background-pages",
-            "--disable-default-apps",
-            "--mute-audio",
-            "--no-default-browser-check",
-            "--no-first-run",
-            "--window-size=1920,1080",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            f"--user-agent={user_agent}"
-        ]
+        if config.SAVE_LOGIN_STATE:
+            # feat issue #14
+            # we will save login state to avoid login every time
+            user_data_dir = os.path.join(
+                os.getcwd(), "browser_data", config.USER_DATA_DIR % config.PLATFORM
+            )  # type: ignore
+            browser_context = await chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                accept_downloads=True,
+                headless=headless,
+                proxy=playwright_proxy,  # type: ignore
+                viewport={"width": 1920, "height": 1080},
+                user_agent=user_agent,
+            )
+            return browser_context
         
-        browser = await chromium.launch(
-            headless=headless,
-            proxy=playwright_proxy,
-            args=args,
-            chromium_sandbox=False
-        )
-        
-        # 创建上下文时禁用自动化特征
-        context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent=user_agent,
-            is_mobile=False,
-            has_touch=False,
-            java_script_enabled=True,
-            bypass_csp=True,
-            ignore_https_errors=True
-        )
-        
-        # 加载 stealth 插件
-        await context.add_init_script(
-            path="libs/stealth.min.js"  # 确保路径正确
-        )
-        
-        # 覆盖 navigator.webdriver 属性
-        await context.add_init_script("""
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
-        """)
-        
-        return context
+        else:
+            browser = await chromium.launch(headless=headless, proxy=playwright_proxy)  # type: ignore
+            browser_context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080}, user_agent=user_agent
+            )
+            return browser_context
 
     async def close(self):
         """Close browser context"""
