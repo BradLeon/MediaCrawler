@@ -88,7 +88,7 @@ class XiaoHongShuLogin(AbstractLogin):
             # 另一种是需要点击切换到手机登录的
             element = await self.context_page.wait_for_selector(
                 selector='xpath=//div[@class="login-container"]//div[@class="other-method"]/div[1]',
-                timeout=5000
+                timeout=10000
             )
             await element.click()
         except Exception as e:
@@ -137,7 +137,7 @@ class XiaoHongShuLogin(AbstractLogin):
             utils.logger.info("[XiaoHongShuLogin.login_by_mobile] Login xiaohongshu failed by mobile login method ...")
             sys.exit()
 
-        wait_redirect_seconds = 5
+        wait_redirect_seconds = 20
         utils.logger.info(f"[XiaoHongShuLogin.login_by_mobile] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 
@@ -183,7 +183,7 @@ class XiaoHongShuLogin(AbstractLogin):
             utils.logger.info("[XiaoHongShuLogin.login_by_qrcode] Login xiaohongshu failed by qrcode login method ...")
             sys.exit()
 
-        wait_redirect_seconds = 5
+        wait_redirect_seconds = 20
         utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 

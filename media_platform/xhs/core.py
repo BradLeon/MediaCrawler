@@ -26,6 +26,7 @@ from base.base_crawler import AbstractCrawler
 from config import CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES
 from model.m_xiaohongshu import NoteUrlInfo
 from proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
+from proxy.providers.kuaidl_tunnel_proxy import KuaiDaiLiTunnelProxy
 from store import xhs as xhs_store
 from tools import utils
 from var import crawler_type_var, source_keyword_var
@@ -53,12 +54,13 @@ class XiaoHongShuCrawler(AbstractCrawler):
     async def start(self) -> None:
         playwright_proxy, httpx_proxy = None, None
         if config.ENABLE_IP_PROXY:
-            ip_proxy_pool = await create_ip_pool(
-                config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
-            )
-            ip_proxy_info: IpInfoModel = await ip_proxy_pool.get_proxy()
+            #ip_proxy_pool = await create_ip_pool(
+            #    config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
+            #)
+            kdl_tunnel_proxy = KuaiDaiLiTunnelProxy()
+            # ip_proxy_info: IpInfoModel = await ip_proxy_pool.get_proxy()
             playwright_proxy, httpx_proxy = self.format_proxy_info(
-                ip_proxy_info
+                kdl_tunnel_proxy
             )
 
         async with async_playwright() as playwright:
@@ -67,7 +69,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
             self.browser_context = await self.launch_browser(
                 chromium, None, self.user_agent, headless=config.HEADLESS
             )
-            # stealth.min.js to prevent detection
+            
+            # 注入stealth.min.js
             await self.browser_context.add_init_script(path="libs/stealth.min.js")
             # add webId cookie to avoid sliding captcha
             await self.browser_context.add_cookies(
@@ -217,10 +220,17 @@ class XiaoHongShuCrawler(AbstractCrawler):
             "[XiaoHongShuCrawler.get_creators_and_notes] Begin get xiaohongshu creators"
         )
         for user_id in config.XHS_CREATOR_ID_LIST:
+            # 在获取创作者信息前模拟人类行为
+            await self.simulate_human_behavior(self.context_page)
+            
             # get creator detail info from web html content
             createor_info: Dict = await self.xhs_client.get_creator_info(
                 user_id=user_id
             )
+            
+            # 在获取创作者信息后模拟人类行为
+            await self.simulate_human_behavior(self.context_page)
+            
             if createor_info:
                 await xhs_store.save_creator(user_id, creator=createor_info)
 
@@ -228,7 +238,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
-                crawl_interval = random.random()
+               
+                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             # Get all note information of the creator
@@ -326,7 +337,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
         async with semaphore:
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
-                crawl_interval = random.random()
+                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             try:
@@ -395,6 +406,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 name=note_id,
             )
             task_list.append(task)
+            
+            # 每处理3-5个请求后随机模拟人类行为
+            if index % random.randint(3, 5) == 0:
+                await self.simulate_human_behavior(self.context_page)
+        
         await asyncio.gather(*task_list)
 
     async def get_comments(self, note_id: str, xsec_token: str, semaphore: asyncio.Semaphore = None):
@@ -405,7 +421,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
             )
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
-                crawl_interval = random.random()
+    
+                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             
@@ -418,27 +435,41 @@ class XiaoHongShuCrawler(AbstractCrawler):
             )
 
         # 如果启用了评论对话保留，则保存评论到JSONL
-        if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
+        # if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
             # 目前只支持json格式的转化（其他格式CSV、DB会报错）
-            await self.store.convert_comments_to_conversations()
+        #    await self.store.convert_comments_to_conversations()
 
     @staticmethod
     def format_proxy_info(
-        ip_proxy_info: IpInfoModel,
+        kdl_tunnel_proxy: KuaiDaiLiTunnelProxy,
     ) -> Tuple[Optional[Dict], Optional[Dict]]:
         """format proxy info for playwright and httpx"""
+        '''
         playwright_proxy = {
             "server": f"{ip_proxy_info.protocol}{ip_proxy_info.ip}:{ip_proxy_info.port}",
             "username": ip_proxy_info.user,
             "password": ip_proxy_info.password,
         }
+
         httpx_proxy = {
             f"{ip_proxy_info.protocol}": f"http://{ip_proxy_info.user}:{ip_proxy_info.password}@{ip_proxy_info.ip}:{ip_proxy_info.port}"
         }
+        '''
+            
+        playwright_proxy = {
+            "server": kdl_tunnel_proxy.tunnel,
+            "username": kdl_tunnel_proxy.user,
+            "password": kdl_tunnel_proxy.password,
+        }
+
+        httpx_proxy = {
+            "http://": f"http://{kdl_tunnel_proxy.user}:{kdl_tunnel_proxy.password}@{kdl_tunnel_proxy.tunnel}",
+            "https://": f"http://{kdl_tunnel_proxy.user}:{kdl_tunnel_proxy.password}@{kdl_tunnel_proxy.tunnel}"
+        }
+
         # test
         print("playwright_proxy:", playwright_proxy)
         print("httpx_proxy:", httpx_proxy)
-        print("ip_proxy_info:", ip_proxy_info)
         return playwright_proxy, httpx_proxy
 
     async def create_xhs_client(self, httpx_proxy: Optional[str]) -> XiaoHongShuClient:
@@ -480,33 +511,64 @@ class XiaoHongShuCrawler(AbstractCrawler):
         chromium: BrowserType,
         playwright_proxy: Optional[Dict],
         user_agent: Optional[str],
-        headless: bool = True,
+        headless: bool = True
     ) -> BrowserContext:
         """Launch browser and create browser context"""
-        utils.logger.info(
-            "[XiaoHongShuCrawler.launch_browser] Begin create browser context ..."
+        utils.logger.info("[XiaoHongShuCrawler.launch_browser] Begin launch chromium browser ...")
+        
+        # 添加反检测参数
+        args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--disable-extensions",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-default-apps",
+            "--mute-audio",
+            "--no-default-browser-check",
+            "--no-first-run",
+            "--window-size=1920,1080",
+            "--disable-gpu",
+            "--hide-scrollbars",
+            f"--user-agent={user_agent}"
+        ]
+        
+        browser = await chromium.launch(
+            headless=headless,
+            proxy=playwright_proxy,
+            args=args,
+            chromium_sandbox=False
         )
-        if config.SAVE_LOGIN_STATE:
-            # feat issue #14
-            # we will save login state to avoid login every time
-            user_data_dir = os.path.join(
-                os.getcwd(), "browser_data", config.USER_DATA_DIR % config.PLATFORM
-            )  # type: ignore
-            browser_context = await chromium.launch_persistent_context(
-                user_data_dir=user_data_dir,
-                accept_downloads=True,
-                headless=headless,
-                proxy=playwright_proxy,  # type: ignore
-                viewport={"width": 1920, "height": 1080},
-                user_agent=user_agent,
-            )
-            return browser_context
-        else:
-            browser = await chromium.launch(headless=headless, proxy=playwright_proxy)  # type: ignore
-            browser_context = await browser.new_context(
-                viewport={"width": 1920, "height": 1080}, user_agent=user_agent
-            )
-            return browser_context
+        
+        # 创建上下文时禁用自动化特征
+        context = await browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent=user_agent,
+            is_mobile=False,
+            has_touch=False,
+            java_script_enabled=True,
+            bypass_csp=True,
+            ignore_https_errors=True
+        )
+        
+        # 加载 stealth 插件
+        await context.add_init_script(
+            path="libs/stealth.min.js"  # 确保路径正确
+        )
+        
+        # 覆盖 navigator.webdriver 属性
+        await context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+        """)
+        
+        return context
 
     async def close(self):
         """Close browser context"""
@@ -586,3 +648,65 @@ class XiaoHongShuCrawler(AbstractCrawler):
             utils.logger.error(f"[XiaoHongShuCrawler.stop] Error stopping playwright: {e}")
         
         utils.logger.info("[XiaoHongShuCrawler.stop] Stop xiaohongshu crawler successful")
+
+    async def rotate_fingerprint(self):
+        """定期更换浏览器指纹"""
+        # 关闭旧上下文
+        await self.browser_context.close()
+        
+        # 随机选择一个新的用户代理
+        new_user_agent = random.choice([
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        ])
+        
+        # 创建新的浏览器上下文
+        self.browser_context = await self.launch_browser(
+            self.playwright.chromium,
+            self.playwright_proxy,
+            new_user_agent,
+            headless=config.HEADLESS
+        )
+        
+        # 重新注入stealth脚本
+        await self.browser_context.add_init_script(path="libs/stealth.min.js")
+        
+        # 创建新页面
+        self.context_page = await self.browser_context.new_page()
+        await self.context_page.goto(self.index_url)
+        
+        # 更新客户端
+        await self.xhs_client.update_cookies(browser_context=self.browser_context)
+
+    async def human_like_click(self, element):
+        """模拟人类点击行为"""
+        box = await element.bounding_box()
+        x = box["x"] + box["width"] * random.uniform(0.3, 0.7)
+        y = box["y"] + box["height"] * random.uniform(0.3, 0.7)
+        
+        await self.context_page.mouse.move(x, y)
+        await asyncio.sleep(random.uniform(0.1, 0.3))
+        await self.context_page.mouse.down()
+        await asyncio.sleep(random.uniform(0.05, 0.15))
+        await self.context_page.mouse.up()
+
+    async def simulate_human_behavior(self, page):
+        """模拟人类浏览行为"""
+        # 随机滚动
+        await page.evaluate("""
+        () => {
+            const scrollHeight = Math.floor(Math.random() * 100);
+            window.scrollBy(0, scrollHeight);
+        }
+        """)
+        
+        # 随机移动鼠标
+        await page.mouse.move(
+            x=random.randint(100, 500),
+            y=random.randint(100, 500),
+            steps=random.randint(5, 10)
+        )
+        
+        # 随机暂停
+        await asyncio.sleep(random.uniform(0.5, 2.0))

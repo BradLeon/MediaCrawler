@@ -11,6 +11,7 @@
 
 import asyncio
 import json
+import random
 import re
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urlencode
@@ -94,6 +95,11 @@ class XiaoHongShuClient(AbstractApiClient):
 
         """
         return_response = kwargs.pop("return_response", False)
+        
+        # 添加渐进式延迟（基础延迟 + 随机延迟）
+
+        #random_delay = random.uniform(2, 7)  # 随机增加2-7秒
+        #await asyncio.sleep(random_delay)
         
         try:
             async with httpx.AsyncClient(proxies=self.proxies) as client:
