@@ -134,7 +134,7 @@ TIEBA_CREATOR_URL_LIST = [
 XHS_CREATOR_ID_LIST = [
     #美妆护肤赛道
     #毕生之研懂事长
-    "55d1a291e4b1cf15db1d65c0",
+    # "55d1a291e4b1cf15db1d65c0",
     #毕生之研
     "56e0ddd23460945c368439d6",
     #HBN

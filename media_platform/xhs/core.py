@@ -52,92 +52,100 @@ class XiaoHongShuCrawler(AbstractCrawler):
         self.store = XhsStoreFactory.create_store()
 
     async def start(self) -> None:
-        playwright_proxy, httpx_proxy = None, None
-        if config.ENABLE_IP_PROXY:
-            #ip_proxy_pool = await create_ip_pool(
-            #    config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
-            #)
-            kdl_tunnel_proxy = KuaiDaiLiTunnelProxy()
-            # ip_proxy_info: IpInfoModel = await ip_proxy_pool.get_proxy()
-            playwright_proxy, httpx_proxy = self.format_proxy_info(
-                kdl_tunnel_proxy
-            )
-
-        async with async_playwright() as playwright:
-            # 先启动浏览器但不使用持久化上下文
-            chromium = playwright.chromium
-            self.browser_context = await self.launch_browser(
-                chromium, None, self.user_agent, headless=config.HEADLESS
-            )
-            
-            # 注入stealth.min.js
-            await self.browser_context.add_init_script(path="libs/stealth.min.js")
-            # add webId cookie to avoid sliding captcha
-            await self.browser_context.add_cookies(
-                [
-                    {
-                        "name": "webId",
-                        "value": "xxx123",
-                        "domain": ".xiaohongshu.com",
-                        "path": "/",
-                    }
-                ]
-            )
-            self.context_page = await self.browser_context.new_page()
-            await self.context_page.goto(self.index_url)
-
-            # 创建客户端和尝试登录
-            self.xhs_client = await self.create_xhs_client(httpx_proxy)
-            login_successful = await self.xhs_client.pong()
-            
-            # 如果启用了保存登录状态但当前没有登录成功，尝试从保存的cookies登录
-            if not login_successful and config.SAVE_LOGIN_STATE:
-                login_obj = XiaoHongShuLogin(
-                    login_type="cookie",
-                    login_phone="",
-                    browser_context=self.browser_context,
-                    context_page=self.context_page,
-                    cookie_str=config.COOKIES,
+        try:
+            playwright_proxy, httpx_proxy = None, None
+            if config.ENABLE_IP_PROXY:
+                #ip_proxy_pool = await create_ip_pool(
+                #    config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
+                #)
+                kdl_tunnel_proxy = KuaiDaiLiTunnelProxy()
+                # ip_proxy_info: IpInfoModel = await ip_proxy_pool.get_proxy()
+                playwright_proxy, httpx_proxy = self.format_proxy_info(
+                    kdl_tunnel_proxy
                 )
-                # 尝试加载保存的cookies
-                cookies = await login_obj.load_saved_cookies()
-                if cookies:
-                    await self.browser_context.add_cookies(cookies)
-                    await self.context_page.reload()
-                    # 更新客户端cookies
-                    await self.xhs_client.update_cookies(browser_context=self.browser_context)
-                    login_successful = await self.xhs_client.pong()
-            
-            # 如果仍未登录成功，使用配置的登录方式
-            if not login_successful:
-                login_obj = XiaoHongShuLogin(
-                    login_type=config.LOGIN_TYPE,
-                    login_phone="",
-                    browser_context=self.browser_context,
-                    context_page=self.context_page,
-                    cookie_str=config.COOKIES,
+
+            async with async_playwright() as playwright:
+                # 先启动浏览器但不使用持久化上下文
+                chromium = playwright.chromium
+                self.browser_context = await self.launch_browser(
+                    chromium, None, self.user_agent, headless=config.HEADLESS
                 )
-                await login_obj.begin()
-                await self.xhs_client.update_cookies(browser_context=self.browser_context)
                 
-                # 如果启用了保存登录状态，保存cookies
-                if config.SAVE_LOGIN_STATE:
-                    await login_obj.save_cookies()
+                # 注入stealth.min.js
+                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+                # add webId cookie to avoid sliding captcha
+                await self.browser_context.add_cookies(
+                    [
+                        {
+                            "name": "webId",
+                            "value": "xxx123",
+                            "domain": ".xiaohongshu.com",
+                            "path": "/",
+                        }
+                    ]
+                )
+                self.context_page = await self.browser_context.new_page()
+                await self.context_page.goto(self.index_url)
 
-            crawler_type_var.set(config.CRAWLER_TYPE)
-            if config.CRAWLER_TYPE == "search":
-                # Search for notes and retrieve their comment information.
-                await self.search()
-            elif config.CRAWLER_TYPE == "detail":
-                # Get the information and comments of the specified post
-                await self.get_specified_notes()
-            elif config.CRAWLER_TYPE == "creator":
-                # Get creator's information and their notes and comments
-                await self.get_creators_and_notes()
-            else:
-                pass
+                # 创建客户端和尝试登录
+                self.xhs_client = await self.create_xhs_client(httpx_proxy)
+                login_successful = await self.xhs_client.pong()
+                
+                # 如果启用了保存登录状态但当前没有登录成功，尝试从保存的cookies登录
+                if not login_successful and config.SAVE_LOGIN_STATE:
+                    login_obj = XiaoHongShuLogin(
+                        login_type="cookie",
+                        login_phone="",
+                        browser_context=self.browser_context,
+                        context_page=self.context_page,
+                        cookie_str=config.COOKIES,
+                    )
+                    # 尝试加载保存的cookies
+                    cookies = await login_obj.load_saved_cookies()
+                    if cookies:
+                        await self.browser_context.add_cookies(cookies)
+                        await self.context_page.reload()
+                        # 更新客户端cookies
+                        await self.xhs_client.update_cookies(browser_context=self.browser_context)
+                        login_successful = await self.xhs_client.pong()
+                
+                # 如果仍未登录成功，使用配置的登录方式
+                if not login_successful:
+                    login_obj = XiaoHongShuLogin(
+                        login_type=config.LOGIN_TYPE,
+                        login_phone="",
+                        browser_context=self.browser_context,
+                        context_page=self.context_page,
+                        cookie_str=config.COOKIES,
+                    )
+                    await login_obj.begin()
+                    await self.xhs_client.update_cookies(browser_context=self.browser_context)
+                    
+                    # 如果启用了保存登录状态，保存cookies
+                    if config.SAVE_LOGIN_STATE:
+                        await login_obj.save_cookies()
 
-            utils.logger.info("[XiaoHongShuCrawler.start] Xhs Crawler finished ...")
+                crawler_type_var.set(config.CRAWLER_TYPE)
+                if config.CRAWLER_TYPE == "search":
+                    # Search for notes and retrieve their comment information.
+                    await self.search()
+                elif config.CRAWLER_TYPE == "detail":
+                    # Get the information and comments of the specified post
+                    await self.get_specified_notes()
+                elif config.CRAWLER_TYPE == "creator":
+                    # Get creator's information and their notes and comments
+                    await self.get_creators_and_notes()
+                else:
+                    pass
+
+                utils.logger.info("[XiaoHongShuCrawler.start] Xhs Crawler finished ...")
+        except Exception as e:
+            utils.logger.error(f"爬虫运行过程中发生错误: {e}")
+            # 可以选择是否继续执行或退出
+            # 如果是严重错误，可以在这里调用self.stop()
+        finally:
+            # 确保资源被正确释放
+            await self.stop()
 
     async def search(self) -> None:
         """Search for notes and retrieve their comment information."""
@@ -234,8 +242,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
             if createor_info:
                 await xhs_store.save_creator(user_id, creator=createor_info)
 
-                print("after get creator info", createor_info.get("nickname") if createor_info else None)
-
             # When proxy is not enabled, increase the crawling interval
             if config.ENABLE_IP_PROXY:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
@@ -272,15 +278,28 @@ class XiaoHongShuCrawler(AbstractCrawler):
         note_details = await asyncio.gather(*task_list)
         for note_detail in note_details:
             if note_detail:
-                # 增加过滤条件： 时间过滤条件&点赞数过滤条件
-                last_update_time = note_detail.get("last_update_time", 0) 
-                comment_count = note_detail.get("interact_info", {}).interact_info.get("comment_count") # 点赞数
-                if (comment_count < config.COMMENT_COUNT_THRESHOLD and last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
+                try:
+                    # 增加过滤条件：时间过滤条件&点赞数过滤条件，一般认为评论数大于点赞数，可能是活动或水军导致，分析意义不大
+                    last_update_time = note_detail.get("last_update_time", 0) 
+                    interact_info = note_detail.get("interact_info", {})
+                    
+                    # 使用安全转换函数
+                    comment_count = self.safe_int_convert(interact_info.get("comment_count", 0))
+                    liked_count = self.safe_int_convert(interact_info.get("liked_count", 0))
+                    
+                    if (comment_count < config.COMMENT_COUNT_THRESHOLD or 
+                        liked_count < comment_count or 
+                        last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
+                        continue
+                        
+                    await xhs_store.update_xhs_note(note_detail)
+                    filtered_note_list.append(note_detail.get("note_id"))
+                    xsec_tokens.append(note_detail.get("xsec_token"))
+                except Exception as e:
+                    # 捕获处理单个笔记时的所有异常，防止一个笔记的问题影响整个流程
+                    utils.logger.error(f"处理笔记详情时出错: {e}, note_id: {note_detail.get('note_id', 'unknown')}")
                     continue
-                await xhs_store.update_xhs_note(note_detail)
-                filtered_note_list.append(note_detail.get("note_id"))
-                xsec_tokens.append(note_detail.get("xsec_token"))
-
+        
         # 获取过滤后的笔记的评论
         await self.batch_get_note_comments(filtered_note_list, xsec_tokens)
     
@@ -314,15 +333,26 @@ class XiaoHongShuCrawler(AbstractCrawler):
         note_details = await asyncio.gather(*get_note_detail_task_list)
         for note_detail in note_details:
             if note_detail:
-                # 增加过滤条件： 时间过滤条件&点赞数过滤条件
-                last_update_time = note_detail.get("last_update_time", 0) 
-                comment_count = note_detail.get("interact_info", {}).interact_info.get("comment_count") # 点赞数
-                if (comment_count < config.COMMENT_COUNT_THRESHOLD and last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
-                    continue
+                try:
+                    # 增加过滤条件：时间过滤条件&点赞数过滤条件，一般认为评论数大于点赞数，可能是活动或水军导致，分析意义不大
+                    last_update_time = note_detail.get("last_update_time", 0) 
+                    interact_info = note_detail.get("interact_info", {})
+                    
+                    # 使用安全转换函数
+                    comment_count = self.safe_int_convert(interact_info.get("comment_count", 0))
+                    liked_count = self.safe_int_convert(interact_info.get("liked_count", 0))
+                    
+                    if (comment_count < config.COMMENT_COUNT_THRESHOLD or 
+                        liked_count < comment_count or 
+                        last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
+                        continue
 
-                need_get_comment_note_ids.append(note_detail.get("note_id", ""))
-                xsec_tokens.append(note_detail.get("xsec_token", ""))
-                await xhs_store.update_xhs_note(note_detail)
+                    need_get_comment_note_ids.append(note_detail.get("note_id", ""))
+                    xsec_tokens.append(note_detail.get("xsec_token", ""))
+                    await xhs_store.update_xhs_note(note_detail)
+                except Exception as e:
+                    utils.logger.error(f"处理指定笔记时出错: {e}, note_id: {note_detail.get('note_id', 'unknown')}")
+                    continue
         await self.batch_get_note_comments(need_get_comment_note_ids, xsec_tokens)
 
     async def get_note_detail_async_task(
@@ -688,3 +718,63 @@ class XiaoHongShuCrawler(AbstractCrawler):
         
         # 随机暂停
         await asyncio.sleep(random.uniform(0.5, 2.0))
+
+    def safe_int_convert(self, value, default=0):
+        """安全地将值转换为整数
+        
+        处理以下情况:
+        - 数字字符串: "123" -> 123
+        - 带加号的数字: "10+" -> 10
+        - 带千分位的数字: "1,234" -> 1234
+        - 带单位的数字: "1.2k" -> 1200, "1.2w" -> 12000
+        - 非数字: 返回默认值
+        """
+        if value is None:
+            return default
+        
+        if isinstance(value, int):
+            return value
+        
+        if isinstance(value, float):
+            return int(value)
+        
+        if not isinstance(value, str):
+            return default
+        
+        # 处理空字符串
+        if not value.strip():
+            return default
+        
+        try:
+            # 处理带加号的数字 (例如 "10+")
+            if "+" in value:
+                value = value.replace("+", "")
+            
+            # 处理带千分位的数字 (例如 "1,234")
+            value = value.replace(",", "")
+            
+            # 处理带单位的数字
+            if value.lower().endswith('k'):
+                # 例如 "1.2k" -> 1200
+                return int(float(value[:-1]) * 1000)
+            elif value.lower().endswith('w'):
+                # 例如 "1.2w" -> 12000 (万)
+                return int(float(value[:-1]) * 10000)
+            elif value.lower().endswith('m'):
+                # 例如 "1.2m" -> 1200000
+                return int(float(value[:-1]) * 1000000)
+            
+            # 尝试直接转换为整数
+            return int(float(value))
+        except (ValueError, TypeError):
+            utils.logger.warning(f"无法将值 '{value}' 转换为整数，使用默认值 {default}")
+            return default
+
+    def validate_note_detail(self, note_detail):
+        """验证笔记详情数据的完整性"""
+        required_fields = ["note_id", "user", "type"]
+        for field in required_fields:
+            if field not in note_detail:
+                utils.logger.warning(f"笔记缺少必要字段: {field}, note_id: {note_detail.get('note_id', 'unknown')}")
+                return False
+        return True

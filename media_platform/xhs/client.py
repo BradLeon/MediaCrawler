@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 
 import httpx
 from playwright.async_api import BrowserContext, Page
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_result
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_result, retry_if_exception_type
 
 import config
 from base.base_crawler import AbstractApiClient
@@ -82,7 +82,15 @@ class XiaoHongShuClient(AbstractApiClient):
         self.headers.update(headers)
         return self.headers
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+    @retry(
+        stop=stop_after_attempt(5),  # 最多重试5次
+        wait=wait_fixed(2),          # 每次重试间隔2秒
+        retry=(                      # 定义哪些异常需要重试
+            retry_if_exception_type(httpx.TimeoutException) |
+            retry_if_exception_type(httpx.ConnectError) |
+            retry_if_exception_type(httpx.ProxyError)
+        )
+    )
     async def request(self, method, url, **kwargs) -> Union[str, Any]:
         """
         封装httpx的公共请求方法，对请求响应做一些处理
@@ -98,6 +106,9 @@ class XiaoHongShuClient(AbstractApiClient):
         
         try:
             async with httpx.AsyncClient(proxies=self.proxies) as client:
+                request_interval = random.uniform(1, 12)  # 随机增加2-7秒
+                await asyncio.sleep(request_interval)  # 设置请求时间间隔
+
                 response = await client.request(method, url, timeout=self.timeout, **kwargs)
                 
                 if response.status_code == 471 or response.status_code == 461:
@@ -352,7 +363,7 @@ class XiaoHongShuClient(AbstractApiClient):
         comments_cursor = ""
         while comments_has_more and len(result) < max_count:
 
-            request_interval = random.uniform(10, 25)  # 随机增加2-7秒
+            request_interval = random.uniform(8, 15)  # 随机增加2-7秒
             await asyncio.sleep(request_interval)  # 设置请求时间间隔
         
             comments_res = await self.get_note_comments(
@@ -552,6 +563,9 @@ class XiaoHongShuClient(AbstractApiClient):
         html = await self.request(
             method="GET", url=url, return_response=True, headers=copy_headers
         )
+        # test
+        print("[XiaoHongShuClient.get_note_by_id_from_html] enable_cookie:", enable_cookie)
+        print("[XiaoHongShuClient.get_note_by_id_from_html] url:", url)
 
         def get_note_dict(html):
             state = re.findall(r"window.__INITIAL_STATE__=({.*})</script>", html)[
@@ -624,7 +638,7 @@ class XiaoHongShuClient(AbstractApiClient):
             # 获取所有子评论
             child_comments = []
             while sub_comment_has_more:
-                request_interval = random.uniform(10, 30)  # 随机增加2-7秒
+                request_interval = random.uniform(7, 15)  # 随机增加2-7秒
                 await asyncio.sleep(request_interval)  # 设置请求时间间隔
                 try:
                     comments_res = await self.get_note_sub_comments(
