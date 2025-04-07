@@ -21,13 +21,15 @@ import pathlib
 from typing import Dict, List
 
 import aiofiles
-
 import config
 from base.base_crawler import AbstractStore
 from tools import utils, words
 from var import crawler_type_var
 from datetime import datetime
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def calculate_number_of_files(file_store_path: str) -> int:
     """计算数据保存文件的前部分排序数字，支持每次运行代码不写到同一个文件中
@@ -112,6 +114,15 @@ class XhsCsvStoreImplement(AbstractStore):
         await self.save_data_to_csv(save_item=creator, store_type="creator")
 
 
+
+    # 使用示例
+    async def convert_comments_to_conversations(self):
+        """将评论数据转换为对话树并保存到单个JSONL文件"""
+
+              # 实现你的逻辑
+        print("Converting comments to conversations...")
+
+
 class XhsDbStoreImplement(AbstractStore):
     async def store_content(self, content_item: Dict):
         """
@@ -173,6 +184,13 @@ class XhsDbStoreImplement(AbstractStore):
             await update_creator_by_user_id(user_id, creator)
 
 
+    # 使用示例
+    async def convert_comments_to_conversations(self):
+        """将评论数据转换为对话树并保存到单个JSONL文件"""
+
+              # 实现你的逻辑
+        print("Converting comments to conversations...")
+
 class XhsJsonStoreImplement(AbstractStore):
     json_store_path: str = "data/xhs/json"
     words_store_path: str = "data/xhs/words"
@@ -180,7 +198,7 @@ class XhsJsonStoreImplement(AbstractStore):
     file_count:int=calculate_number_of_files(json_store_path)
     WordCloud = words.AsyncWordCloudGenerator()
 
-    def make_save_file_name(self, store_type: str) -> (str,str):
+    def make_save_file_name(self, store_type: str) -> (str,str): # type: ignore
         """
         make save file name by store type
         Args:
@@ -648,20 +666,331 @@ class XhsJsonStoreImplement(AbstractStore):
         else:
             utils.logger.warning(f"未找到有效对话，未生成文件")
 
+    async def build_comment_conversations_include_author(self, input_file: str, output_dir: str = None) -> None:
+        """
+        从评论JSON文件构建扁平化的对话链结构并保存为单个JSONL文件
+        每条从根到叶子的完整路径作为一个独立对话，适合向量检索
+        只保留包含作者回复(is_author=True)的对话
+        
+        Args:
+            input_file: 输入的评论JSON文件路径
+            output_dir: 输出目录，默认为config.COMMENT_CORPUS_DIR
+        """
+        import uuid
+        
+        # 读取评论数据
+        with open(input_file, 'r', encoding='utf-8') as f:
+            comments = json.load(f)
+        
+        pathlib.Path(self.json_store_path).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(self.words_store_path).mkdir(parents=True, exist_ok=True)
+        save_file_name = self.make_save_jsonl_file_name(store_type="comment_conversations_author_flat")
+
+        # 按笔记ID分组
+        notes_comments = {}
+        for comment in comments:
+            note_id = comment.get('note_id')
+            if not note_id:
+                continue
+            
+            if note_id not in notes_comments:
+                notes_comments[note_id] = []
+            
+            notes_comments[note_id].append(comment)
+        
+        # 所有扁平化对话链的集合
+        all_conversation_chains = []
+        
+        # 处理每个笔记的评论
+        for note_id, comments_list in notes_comments.items():
+            # 创建评论ID到评论的映射
+            comment_map = {comment.get('comment_id'): comment for comment in comments_list}
+            
+            # 构建评论树结构
+            comment_tree = {}
+            for comment in comments_list:
+                comment_id = comment.get('comment_id')
+                parent_id = comment.get('parent_comment_id')
+                
+                # 初始化当前评论的子评论列表
+                if comment_id not in comment_tree:
+                    comment_tree[comment_id] = []
+                
+                # 如果是子评论，将其添加到父评论的子评论列表中
+                if parent_id and parent_id != 0:
+                    if parent_id not in comment_tree:
+                        comment_tree[parent_id] = []
+                    comment_tree[parent_id].append(comment_id)
+            
+            # 找出所有根评论（parent_comment_id为0的评论）
+            root_comments = [comment for comment in comments_list if comment.get('parent_comment_id') == 0 or not comment.get('parent_comment_id')]
+            
+            # DFS遍历构建所有从根到叶子的路径
+            def build_comment_path(comment_id, path=None, depth=0, max_depth=config.COMMENT_CONVERSATION_MAX_DEPTH):
+                if depth > max_depth:  # 防止无限递归
+                    return []
+                
+                if comment_id not in comment_map:
+                    return []
+                
+                if path is None:
+                    path = []
+                
+                # 获取当前评论
+                comment = comment_map[comment_id]
+                
+                # 构建当前评论节点
+                comment_node = {
+                    "note_id": note_id,
+                    "conversation_id": str(uuid.uuid4()),  # 使用UUID生成唯一对话ID
+                    "comment_id": comment.get('comment_id'),
+                    "parent_id": comment.get('parent_comment_id') if comment.get('parent_comment_id') != 0 else None,
+                    "user_id": comment.get('user_id'),
+                    "user_name": comment.get('nickname'),
+                    "content": comment.get('content'),
+                    "pictures": comment.get('pictures', ''),
+                    "create_time": comment.get('create_time'),
+                    "depth": depth,
+                    "like_count": comment.get('like_count', 0),
+                    "is_author": comment.get('is_author', False)
+                }
+                
+                # 复制当前路径并添加当前节点
+                current_path = path + [comment_node]
+                
+                # 如果没有子评论，这是一条完整的路径
+                if comment_id not in comment_tree or not comment_tree[comment_id]:
+                    return [current_path]
+                
+                # 有子评论，继续DFS遍历
+                all_paths = []
+                for child_id in comment_tree[comment_id]:
+                    child_paths = build_comment_path(
+                        child_id, 
+                        current_path,
+                        depth + 1, 
+                        max_depth
+                    )
+                    all_paths.extend(child_paths)
+                
+                # 如果没有任何子路径返回(可能是因为超过深度限制)，也将当前路径作为一条完整路径
+                if not all_paths:
+                    return [current_path]
+                    
+                return all_paths
+            
+            # 对每个根评论，构建所有可能的对话链
+            for root in root_comments:
+                root_id = root.get('comment_id')
+                # 只处理有回复的根评论，或者是作者的评论
+                if (root_id in comment_tree and comment_tree[root_id]) or root.get('is_author', False):
+                    # 构建此根评论的所有对话链
+                    comment_paths = build_comment_path(root_id)
+                    
+                    # 为每条链路分配唯一ID并保存
+                    for path in comment_paths:
+                        # 只保留有实际对话的路径(至少两条消息)
+                        if len(path) >= 2:
+                            # 为路径中的每个评论添加对话ID
+                            conversation_id = str(uuid.uuid4())
+                            for node in path:
+                                node_with_conv_id = node.copy()
+                                node_with_conv_id["conversation_id"] = conversation_id
+                                all_conversation_chains.append(node_with_conv_id)
+        
+        # 保存所有对话链到一个JSONL文件
+        if all_conversation_chains:
+            # 按对话ID分组，仅保留包含作者评论的对话
+            conversation_ids = set()
+            conversations_with_author = {}
+            
+            # 找出所有包含作者评论的conversation_id
+            for comment in all_conversation_chains:
+                conv_id = comment["conversation_id"]
+                if conv_id not in conversations_with_author:
+                    conversations_with_author[conv_id] = []
+                
+                conversations_with_author[conv_id].append(comment)
+                
+                if comment.get("is_author", False):
+                    conversation_ids.add(conv_id)
+            
+            # 只保留包含作者评论的对话
+            filtered_chains = []
+            for conv_id in conversation_ids:
+                filtered_chains.extend(conversations_with_author[conv_id])
+            
+            # 排序，确保同一对话的消息相邻且按深度排序
+            filtered_chains.sort(key=lambda x: (x["conversation_id"], x["depth"]))
+            
+            async with aiofiles.open(save_file_name, 'w', encoding='utf-8') as f:
+                for comment in filtered_chains:
+                    await f.write(json.dumps(comment, ensure_ascii=False) + '\n')
+            
+            conversation_count = len(conversation_ids)
+            message_count = len(filtered_chains)
+            total_conversations = len(conversations_with_author)
+            utils.logger.info(f"已将所有笔记的 {conversation_count}/{total_conversations} 条包含作者回复的对话链（共 {message_count} 条消息）保存到 {save_file_name}")
+        else:
+            utils.logger.warning(f"未找到有效对话，未生成文件")
+
+    
+
+    async def format_content_image_urls(self):
+        """
+        格式化内容文件中的图片URL
+        将形如 "@http://sns-webpic-qc.xhscdn.com/202504042337/568cb5c1362ab1078345424e8ef643a9/spectrum/1040g0k03120o8e1ohi004140m717516tkt5qoeo!nd_dft_wlteh_jpg_3"
+        转换为 "@http://sns-img-hw.xhscdn.com/spectrum/1040g0k03120o8e1ohi004140m717516tkt5qoeo!nd_dft_wlteh_jpg_3"
+        
+        将形如 "@http://sns-webpic-qc.xhscdn.com/202504021249/c38b871008ab80ac90667fe6ae9a24b8/1040g008316h4pr2k1e4g4bu0b6c0fk1fclskbp0!nd_dft_wlteh_jpg_3"
+        转换为 "@http://sns-img-hw.xhscdn.com/1040g008316h4pr2k1e4g4bu0b6c0fk1fclskbp0!nd_dft_wlteh_jpg_3"
+        """
+        import glob
+        import re
+        import os
+        import json
+        import aiofiles
+        
+        # 确保输出目录存在
+        output_dir = os.path.join(self.json_store_path, "formatted")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 获取所有内容文件
+        content_files = glob.glob(os.path.join(self.json_store_path, "creator_contents_*.json"))
+        
+        if not content_files:
+            utils.logger.warning("未找到内容文件，无法格式化图片URL")
+            return
+        
+        # 合并后的输出文件
+        output_file = os.path.join(output_dir, "formatted_contents.json")
+        
+        # 正则表达式模式 - 处理含有spectrum的链接
+        pattern_spectrum = r'(http://sns-webpic-qc\.xhscdn\.com/\d+/[a-f0-9]+/spectrum/)([a-zA-Z0-9!_.-]+)'
+        # 正则表达式模式 - 处理不含spectrum的链接
+        pattern_normal = r'(http://sns-webpic-qc\.xhscdn\.com/\d+/[a-f0-9]+/)([a-zA-Z0-9!_.-]+)'
+        
+        all_formatted_data = []
+        
+        for file_path in content_files:
+            utils.logger.info(f"处理内容文件: {file_path}")
+            
+            try:
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                    
+                    for item in data:
+                        if "image_list" in item and isinstance(item["image_list"], str) and item["image_list"]:
+                            # 将逗号分隔的URL字符串拆分为列表
+                            img_urls = item["image_list"].split(',')
+                            formatted_images = []
+                            
+                            for img_url in img_urls:
+                                img_url = img_url.strip()
+                                # 先尝试处理含有spectrum的链接
+                                new_url = re.sub(pattern_spectrum, r'http://sns-img-hw.xhscdn.com/spectrum/\2', img_url)
+                                # 如果URL没有变化，说明第一个模式没有匹配，尝试第二个模式
+                                if new_url == img_url:
+                                    new_url = re.sub(pattern_normal, r'http://sns-img-hw.xhscdn.com/\2', img_url)
+                                
+                                formatted_images.append(new_url)
+                            
+                            # 将格式化后的URL列表重新以逗号连接
+                            item["image_list"] = ','.join(formatted_images)
+                        
+                        all_formatted_data.append(item)
+            except Exception as e:
+                utils.logger.error(f"处理文件 {file_path} 时出错: {e}")
+        
+        # 保存合并后的格式化数据
+        try:
+            async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(all_formatted_data, ensure_ascii=False, indent=2))
+            utils.logger.info(f"已将格式化后的内容保存到: {output_file}")
+        except Exception as e:
+            utils.logger.error(f"保存格式化内容时出错: {e}")
+
+    async def format_comment_image_urls(self):
+        """
+        格式化评论文件中的图片URL
+        将形如 "@http://sns-webpic-qc.xhscdn.com/202504050002/7b550abb5a3826d2948cfc341ceaaad1/comment/1040g2h0310hh1p2p6k6g5nst4v408e7gvftabd0!nd_whgt34_webp_wm_1"
+        转换为 "@http://sns-img-hw.xhscdn.com/comment/1040g2h0310hh1p2p6k6g5nst4v408e7gvftabd0!nd_whgt34_webp_wm_1"
+        """
+        import glob
+        import re
+        import os
+        import json
+        import aiofiles
+        
+        # 确保输出目录存在
+        output_dir = os.path.join(self.json_store_path, "formatted")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 获取所有评论文件
+        comment_files = glob.glob(os.path.join(self.json_store_path, "creator_comments_*.json"))
+        
+        if not comment_files:
+            utils.logger.warning("未找到评论文件，无法格式化图片URL")
+            return
+        
+        # 合并后的输出文件
+        output_file = os.path.join(output_dir, "formatted_comments.json")
+        
+        # 正则表达式模式
+        pattern = r'(http://sns-webpic-qc\.xhscdn\.com/\d+/[a-f0-9]+/comment/)([a-zA-Z0-9!_.-]+)'
+        
+        all_formatted_data = []
+        
+        for file_path in comment_files:
+            utils.logger.info(f"处理评论文件: {file_path}")
+            
+            try:
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                    
+                    for item in data:
+                        # 处理主评论中的图片
+                        if "pictures" in item and isinstance(item["pictures"], str) and item["pictures"]:
+                            # 这里pictures是一个单一的URL字符串，直接替换
+                            item["pictures"] = re.sub(pattern, r'http://sns-img-hw.xhscdn.com/comment/\2', item["pictures"])
+                        
+                   
+                        
+                        all_formatted_data.append(item)
+            except Exception as e:
+                utils.logger.error(f"处理文件 {file_path} 时出错: {e}")
+        
+        # 保存合并后的格式化数据
+        try:
+            async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(all_formatted_data, ensure_ascii=False, indent=2))
+            utils.logger.info(f"已将格式化后的评论保存到: {output_file}")
+        except Exception as e:
+            utils.logger.error(f"保存格式化评论时出错: {e}")
+
     # 使用示例
     async def convert_comments_to_conversations(self):
         """将评论数据转换为对话树并保存到单个JSONL文件"""
-        # 获取当前日期
-        pathlib.Path(self.json_store_path).mkdir(parents=True, exist_ok=True)
-        pathlib.Path(self.words_store_path).mkdir(parents=True, exist_ok=True)
-        save_file_name, words_file_name_prefix = self.make_save_file_name(store_type="comments")
-        input_file = save_file_name
+
+        # 格式化图片URL
+        await self.format_content_image_urls()
+        await self.format_comment_image_urls()
+
+        #
+        output_dir = os.path.join(self.json_store_path, "formatted")
+        input_file = os.path.join(output_dir, "formatted_comments.json")
+        
+        # test
+        # input_file = "data/xhs/json/creator_comments_2025-04-05.json"
         
         if os.path.exists(input_file):
-            await self.build_comment_conversations_v3(input_file)
+            await self.build_comment_conversations_include_author(input_file)
             utils.logger.info(f"已完成评论转换为对话树: {input_file}")
         else:
             utils.logger.error(f"评论文件不存在: {input_file}")
 
 
-
+if __name__ == "__main__":
+    asyncio.run(XhsCsvStoreImplement().convert_comments_to_conversations())

@@ -268,7 +268,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
         task_list = [
             self.get_note_detail_async_task(
                 note_id=post_item.get("note_id"),
-                xsec_source=post_item.get("xsec_source"),
+                xsec_source="pc_search",
                 xsec_token=post_item.get("xsec_token"),
                 semaphore=semaphore,
             )

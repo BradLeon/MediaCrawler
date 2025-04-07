@@ -19,6 +19,6 @@ class KuaiDaiLiTunnelProxy():
    
         self.user = kdl_user_name
         self.password = kdl_user_pwd
-        self.tunnel = "i235.kdltpspro.com:15818"
+        self.tunnel = "t308.kdltpspro.com:15818"
         self.secret_id = kdl_secret_id
         self.signature = kdl_signature
