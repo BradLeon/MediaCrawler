@@ -24,6 +24,7 @@ from media_platform.weibo import WeiboCrawler
 from media_platform.xhs import XiaoHongShuCrawler
 from media_platform.zhihu import ZhihuCrawler
 
+from store.xhs.xhs_store_impl import XhsJsonStoreImplement
 
 class CrawlerFactory:
     CRAWLERS = {
@@ -46,8 +47,13 @@ class CrawlerFactory:
 
 async def main():
     # parse cmd
-    await cmd_arg.parse_cmd()
+   # await cmd_arg.parse_cmd()
 
+   # store = XhsJsonStoreImplement()
+   # await store.convert_comments_to_conversations()  # 使用 await 调用异步方法
+    
+
+    
     # init db
     if config.SAVE_DATA_OPTION == "db":
         await db.init_db()
@@ -61,12 +67,11 @@ async def main():
 
     if config.SAVE_DATA_OPTION == "db":
         await db.close()
-
     
 
 if __name__ == '__main__':
     try:
-        # asyncio.run(main())
-        asyncio.get_event_loop().run_until_complete(main())
+        asyncio.run(main())
+        #asyncio.get_event_loop().run_until_complete(main())
     except KeyboardInterrupt:
         sys.exit()

@@ -164,6 +164,8 @@ class XiaoHongShuClient(AbstractApiClient):
         """
         headers = await self._pre_headers(uri, data)
         json_str = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+        # test
+        # print("[XiaoHongShuClient.post] url:", f"{self._host}{uri}", "data:", json_str, "headers:", headers)
         return await self.request(
             method="POST",
             url=f"{self._host}{uri}",
@@ -504,7 +506,7 @@ class XiaoHongShuClient(AbstractApiClient):
         data = {"original_url": f"{self._domain}/discovery/item/{note_id}"}
         return await self.post(uri, data=data, return_response=True)
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+    @retry(stop=stop_after_attempt(2), wait=wait_fixed(1))
     async def get_note_by_id_from_html(
         self,
         note_id: str,
@@ -564,8 +566,8 @@ class XiaoHongShuClient(AbstractApiClient):
             method="GET", url=url, return_response=True, headers=copy_headers
         )
         # test
-        print("[XiaoHongShuClient.get_note_by_id_from_html] enable_cookie:", enable_cookie)
-        print("[XiaoHongShuClient.get_note_by_id_from_html] url:", url)
+        #print("[XiaoHongShuClient.get_note_by_id_from_html] enable_cookie:", enable_cookie)
+        #print("[XiaoHongShuClient.get_note_by_id_from_html] url:", url, "headers:", copy_headers)
 
         def get_note_dict(html):
             state = re.findall(r"window.__INITIAL_STATE__=({.*})</script>", html)[

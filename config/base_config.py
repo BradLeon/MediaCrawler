@@ -58,7 +58,7 @@ START_PAGE = 1
 CRAWLER_MAX_NOTES_COUNT = 1000
 
 # 并发爬虫数量控制
-MAX_CONCURRENCY_NUM = 1
+MAX_CONCURRENCY_NUM = 2
 
 # 是否开启爬图片模式, 默认不开启爬图片
 ENABLE_GET_IMAGES = False
@@ -136,15 +136,15 @@ XHS_CREATOR_ID_LIST = [
     #毕生之研懂事长
     # "55d1a291e4b1cf15db1d65c0",
     #毕生之研
-    "56e0ddd23460945c368439d6",
+    # "56e0ddd23460945c368439d6",
     #HBN
-    "5bfb58078086b80001dbd02f",
+    #"5bfb58078086b80001dbd02f",
     #敷尔佳
-    "5b9890d83cac8b0001b8486f",
+    # "5b9890d83cac8b0001b8486f",
     #逐本
-    "5c74a59f0000000011027e27",
+    # "5c74a59f0000000011027e27",
     #至本
-    "5c4bc681000000001003d41d",
+    # "5c4bc681000000001003d41d",
 
     #花西子
     "55d34272f5a26377d1b784dd",
