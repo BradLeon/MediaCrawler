@@ -350,6 +350,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     need_get_comment_note_ids.append(note_detail.get("note_id", ""))
                     xsec_tokens.append(note_detail.get("xsec_token", ""))
                     await xhs_store.update_xhs_note(note_detail)
+                    await self.get_notice_media(note_detail)
                 except Exception as e:
                     utils.logger.error(f"处理指定笔记时出错: {e}, note_id: {note_detail.get('note_id', 'unknown')}")
                     continue

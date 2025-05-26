@@ -133,16 +133,28 @@ class XhsDbStoreImplement(AbstractStore):
         Returns:
 
         """
-        from .xhs_store_sql import (add_new_content,
-                                    query_content_by_content_id,
-                                    update_content_by_content_id)
-        note_id = content_item.get("note_id")
-        note_detail: Dict = await query_content_by_content_id(content_id=note_id)
-        if not note_detail:
-            content_item["add_ts"] = utils.get_current_timestamp()
-            await add_new_content(content_item)
-        else:
-            await update_content_by_content_id(note_id, content_item=content_item)
+        # 尝试保存到MySQL（如果可用）
+        try:
+            from .xhs_store_sql import (add_new_content,
+                                        query_content_by_content_id,
+                                        update_content_by_content_id)
+            note_id = content_item.get("note_id")
+            note_detail: Dict = await query_content_by_content_id(content_id=note_id)
+            if not note_detail:
+                content_item["add_ts"] = utils.get_current_timestamp()
+                await add_new_content(content_item)
+            else:
+                await update_content_by_content_id(note_id, content_item=content_item)
+            utils.logger.info(f"Successfully saved content to MySQL: {note_id}")
+        except Exception as e:
+            utils.logger.warning(f"Failed to save content to MySQL: {e}, proceeding with Supabase only")
+        
+        # 同时保存到Supabase
+        try:
+            from .xhs_store_sql import supa_insert_note_detail
+            await supa_insert_note_detail(content_item)
+        except Exception as e:
+            utils.logger.error(f"Failed to save content to Supabase: {e}")
 
     async def store_comment(self, comment_item: Dict):
         """
@@ -153,16 +165,28 @@ class XhsDbStoreImplement(AbstractStore):
         Returns:
 
         """
-        from .xhs_store_sql import (add_new_comment,
-                                    query_comment_by_comment_id,
-                                    update_comment_by_comment_id)
-        comment_id = comment_item.get("comment_id")
-        comment_detail: Dict = await query_comment_by_comment_id(comment_id=comment_id)
-        if not comment_detail:
-            comment_item["add_ts"] = utils.get_current_timestamp()
-            await add_new_comment(comment_item)
-        else:
-            await update_comment_by_comment_id(comment_id, comment_item=comment_item)
+        # 尝试保存到MySQL（如果可用）
+        try:
+            from .xhs_store_sql import (add_new_comment,
+                                        query_comment_by_comment_id,
+                                        update_comment_by_comment_id)
+            comment_id = comment_item.get("comment_id")
+            comment_detail: Dict = await query_comment_by_comment_id(comment_id=comment_id)
+            if not comment_detail:
+                comment_item["add_ts"] = utils.get_current_timestamp()
+                await add_new_comment(comment_item)
+            else:
+                await update_comment_by_comment_id(comment_id, comment_item=comment_item)
+            utils.logger.info(f"Successfully saved comment to MySQL: {comment_id}")
+        except Exception as e:
+            utils.logger.warning(f"Failed to save comment to MySQL: {e}, proceeding with Supabase only")
+        
+        # 同时保存到Supabase
+        try:
+            from .xhs_store_sql import supa_insert_comment_detail
+            await supa_insert_comment_detail(comment_item)
+        except Exception as e:
+            utils.logger.error(f"Failed to save comment to Supabase: {e}")
 
     async def store_creator(self, creator: Dict):
         """
@@ -173,16 +197,43 @@ class XhsDbStoreImplement(AbstractStore):
         Returns:
 
         """
-        from .xhs_store_sql import (add_new_creator, query_creator_by_user_id,
-                                    update_creator_by_user_id)
-        user_id = creator.get("user_id")
-        user_detail: Dict = await query_creator_by_user_id(user_id)
-        if not user_detail:
-            creator["add_ts"] = utils.get_current_timestamp()
-            await add_new_creator(creator)
-        else:
-            await update_creator_by_user_id(user_id, creator)
+        # 尝试保存到MySQL（如果可用）
+        try:
+            from .xhs_store_sql import (add_new_creator, query_creator_by_user_id,
+                                        update_creator_by_user_id)
+            user_id = creator.get("user_id")
+            user_detail: Dict = await query_creator_by_user_id(user_id)
+            if not user_detail:
+                creator["add_ts"] = utils.get_current_timestamp()
+                await add_new_creator(creator)
+            else:
+                await update_creator_by_user_id(user_id, creator)
+            utils.logger.info(f"Successfully saved creator to MySQL: {user_id}")
+        except Exception as e:
+            utils.logger.warning(f"Failed to save creator to MySQL: {e}, proceeding with Supabase only")
+        
+        # 同时保存到Supabase
+        try:
+            from .xhs_store_sql import supa_insert_author_detail
+            await supa_insert_author_detail(creator)
+        except Exception as e:
+            utils.logger.error(f"Failed to save creator to Supabase: {e}")
 
+    async def store_search_result(self, search_item: Dict):
+        """
+        搜索结果存储实现 - 保存到Supabase数据库
+        Args:
+            search_item: 搜索结果字典，应包含keyword, rank, note_id, create_time等字段
+
+        Returns:
+
+        """
+        try:
+            from .xhs_store_sql import supa_insert_search_result
+            await supa_insert_search_result(search_item)
+            utils.logger.info(f"Successfully stored search result: {search_item.get('keyword')} - {search_item.get('note_id')}")
+        except Exception as e:
+            utils.logger.error(f"Failed to save search result to Supabase: {e}")
 
     # 使用示例
     async def convert_comments_to_conversations(self):
