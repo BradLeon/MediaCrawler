@@ -152,6 +152,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
         utils.logger.info(
             "[XiaoHongShuCrawler.search] Begin search xiaohongshu keywords"
         )
+        search_result_item = {}
+        search_result_list = []
         xhs_limit_count = 20  # xhs limit page fixed value
         if config.CRAWLER_MAX_NOTES_COUNT < xhs_limit_count:
             config.CRAWLER_MAX_NOTES_COUNT = xhs_limit_count
@@ -193,6 +195,19 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     if not notes_res or not notes_res.get("has_more", False):
                         utils.logger.info("No more content!")
                         break
+                    # todo: 获取排序结果，并记录
+                    print("notes_res:", json.dumps(notes_res, indent=4)) 
+
+                    search_result_item.update({
+                        "keyword": keyword,
+                        "search_account": notes_res.get("items", {})[0].get("xsec_token"),
+                        "search_id": search_id,
+                        "page": page,
+                        # "rank": rank,
+                        "note_id": notes_res.get("items", {}).get("id")
+                    })
+                    search_result_list.append(search_result_item)
+
                     semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
                     task_list = [
                         self.get_note_detail_async_task(
@@ -216,11 +231,14 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         f"[XiaoHongShuCrawler.search] Note details: {note_details}"
                     )
                     await self.batch_get_note_comments(note_ids, xsec_tokens)
+
                 except DataFetchError:
                     utils.logger.error(
                         "[XiaoHongShuCrawler.search] Get note detail error"
                     )
                     break
+        # todo: 保存搜索结果
+        await xhs_store.store_search_result(search_result_list)
 
     async def get_creators_and_notes(self) -> None:
         """Get creator's notes and retrieve their comment information."""

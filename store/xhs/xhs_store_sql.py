@@ -213,17 +213,17 @@ async def supa_insert_note_detail(note_item: Dict) -> bool:
         }
         
         # 使用upsert避免重复插入
-        result = client.table("note_detail").upsert(data, 
+        result = client.table("xhs_note").upsert(data, 
             on_conflict="note_id"
         ).execute()
         
         if utils:
-            utils.logger.info(f"Successfully upserted note_detail for note_id: {note_item.get('note_id')}")
+            utils.logger.info(f"Successfully upserted xhs_note for note_id: {note_item.get('note_id')}")
         return True
         
     except Exception as e:
         if utils:
-            utils.logger.error(f"Failed to upsert note_detail: {e}")
+            utils.logger.error(f"Failed to upsert xhs_note: {e}")
         return False
 
 async def supa_insert_author_detail(author_item: Dict) -> bool:
@@ -257,7 +257,7 @@ async def supa_insert_author_detail(author_item: Dict) -> bool:
         }
         
         # 使用upsert避免重复插入
-        result = client.table("author_detail").upsert(data, 
+        result = client.table("xhs_author").upsert(data, 
             on_conflict="user_id"
         ).execute()
         
@@ -304,7 +304,7 @@ async def supa_insert_comment_detail(comment_item: Dict) -> bool:
         }
         
         # 使用upsert避免重复插入
-        result = client.table("comment_detail").upsert(data, 
+        result = client.table("xhs_comment_detail").upsert(data, 
             on_conflict="comment_id"
         ).execute()
         
@@ -343,7 +343,7 @@ async def supa_insert_search_result(search_item: Dict) -> bool:
         }
         
         # 插入搜索结果
-        result = client.table("search_result").insert(data).execute()
+        result = client.table("xhs_search_result").insert(data).execute()
         
         if utils:
             utils.logger.info(f"Successfully inserted search_result for keyword: {search_item.get('keyword')}, note_id: {search_item.get('note_id')}")
@@ -368,7 +368,7 @@ async def supa_query_note_by_id(note_id: str) -> Optional[Dict]:
     
     try:
         client = supabase_config.client
-        result = client.table("note_detail").select("*").eq("note_id", note_id).execute()
+        result = client.table("xhs_note").select("*").eq("note_id", note_id).execute()
         
         if result.data:
             return result.data[0]
@@ -393,7 +393,7 @@ async def supa_query_author_by_id(user_id: str) -> Optional[Dict]:
     
     try:
         client = supabase_config.client
-        result = client.table("author_detail").select("*").eq("user_id", user_id).execute()
+        result = client.table("xhs_author").select("*").eq("user_id", user_id).execute()
         
         if result.data:
             return result.data[0]
@@ -418,7 +418,7 @@ async def supa_query_comment_by_id(comment_id: str) -> Optional[Dict]:
     
     try:
         client = supabase_config.client
-        result = client.table("comment_detail").select("*").eq("comment_id", comment_id).execute()
+        result = client.table("xhs_comment_detail").select("*").eq("comment_id", comment_id).execute()
         
         if result.data:
             return result.data[0]
