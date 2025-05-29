@@ -255,7 +255,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
             utils.logger.info(
                             f"[XiaoHongShuCrawler.search] search_result_list: {search_result_list}"
                             )
-            await xhs_store.save_search_result(search_result_list)  
+            await self.store.store_search_result(search_result_list) 
         
 
     async def get_creators_and_notes(self) -> None:
@@ -513,7 +513,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
         # 如果启用了评论对话保留，则保存评论到JSONL
         # if config.ENABLE_COMMENT_CONVERSATION and config.SAVE_DATA_OPTION == "json":
             # 目前只支持json格式的转化（其他格式CSV、DB会报错）
-        #    await self.store.convert_comments_to_conversations()
+            # await self.store.convert_comments_to_conversations()
 
     @staticmethod
     def format_proxy_info(
