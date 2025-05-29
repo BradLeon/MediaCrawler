@@ -10,7 +10,7 @@
 
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from playwright.async_api import BrowserContext, BrowserType
 
@@ -82,6 +82,11 @@ class AbstractStore(ABC):
     async def store_creator(self, creator: Dict):
         pass
 
+   # TODO support all platform
+    # only xhs is supported, so @abstractmethod is commented
+    @abstractmethod
+    async def store_search_result(self, search_result_list: List[Dict]):
+        pass
 
 class AbstractStoreImage(ABC):
     # TODO: support all platform

@@ -65,7 +65,7 @@ def get_video_url_arr(note_item: Dict) -> List:
     return videoArr
 
 
-async def update_xhs_note(note_item: Dict):
+async def xupdate_xhs_note(note_item: Dict):
     """
     更新小红书笔记
     Args:
@@ -214,6 +214,55 @@ async def save_creator(user_id: str, creator: Dict):
     }
     utils.logger.info(f"[store.xhs.save_creator] creator:{local_db_item}")
     await XhsStoreFactory.create_store().store_creator(local_db_item)
+
+async def save_search_result(user_id: str, search_result_list:  List[Dict]):
+    """
+    保存小红书搜索排序结果
+    Args:
+        user_id: 搜索者id
+        search_result_list: 搜索排序结果列表
+
+    Returns:
+
+    """
+    user_info = search_result_list.get('basicInfo', {})
+
+    follows = 0
+    fans = 0
+    interaction = 0
+    for i in creator.get('interactions'):
+        if i.get('type') == 'follows':
+            follows = i.get('count')
+        elif i.get('type') == 'fans':
+            fans = i.get('count')
+        elif i.get('type') == 'interaction':
+            interaction = i.get('count')
+
+    def get_gender(gender):
+        if gender == 1:
+            return '女'
+        elif gender == 0:
+            return '男'
+        else:
+            return None
+
+    local_db_item = {
+        'user_id': user_id,  # 用户id
+        'nickname': user_info.get('nickname'),  # 昵称
+        'gender':  get_gender(user_info.get('gender')), # 性别
+        'avatar': user_info.get('images'), # 头像
+        'desc': user_info.get('desc'), # 个人描述
+        'ip_location': user_info.get('ipLocation'), # ip地址
+        'follows': follows, # 关注数
+        'fans': fans,  # 粉丝数
+        'interaction': interaction, # 互动数
+        'tag_list': json.dumps({tag.get('tagType'): tag.get('name') for tag in creator.get('tags')},
+                               ensure_ascii=False), # 标签
+        "last_modify_ts": utils.get_current_timestamp(), # 最后更新时间戳（MediaCrawler程序生成的，主要用途在db存储的时候记录一条记录最新更新时间）
+    }
+    utils.logger.info(f"[store.xhs.save_creator] creator:{local_db_item}")
+    await XhsStoreFactory.create_store().store_creator(local_db_item)
+
 
 
 async def update_xhs_note_image(note_id, pic_content, extension_file_name):
