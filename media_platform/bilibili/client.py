@@ -28,6 +28,12 @@ from .exception import DataFetchError
 from .field import CommentOrderType, SearchOrderType
 from .help import BilibiliSign
 
+# 导入httpx兼容性工具
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils.httpx_compat import create_httpx_async_context
+
 
 class BilibiliClient(AbstractApiClient):
     def __init__(
@@ -47,7 +53,7 @@ class BilibiliClient(AbstractApiClient):
         self.cookie_dict = cookie_dict
 
     async def request(self, method, url, **kwargs) -> Any:
-        async with httpx.AsyncClient(proxies=self.proxies) as client:
+        async with create_httpx_async_context(proxies=self.proxies) as client:
             response = await client.request(
                 method, url, timeout=self.timeout,
                 **kwargs
@@ -192,7 +198,7 @@ class BilibiliClient(AbstractApiClient):
         return await self.get(uri, params, enable_params_sign=True)
 
     async def get_video_media(self, url: str) -> Union[bytes, None]:
-        async with httpx.AsyncClient(proxies=self.proxies) as client:
+        async with create_httpx_async_context(proxies=self.proxies) as client:
             response = await client.request("GET", url, timeout=self.timeout, headers=self.headers)
             if not response.reason_phrase == "OK":
                 utils.logger.error(f"[BilibiliClient.get_video_media] request {url} err, res:{response.text}")

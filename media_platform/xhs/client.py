@@ -12,6 +12,7 @@
 import asyncio
 import json
 import random
+import time
 import re
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urlencode
@@ -28,6 +29,12 @@ from html import unescape
 from .exception import DataFetchError, IPBlockError
 from .field import SearchNoteType, SearchSortType
 from .help import get_search_id, sign
+
+# 导入httpx兼容性工具
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils.httpx_compat import create_httpx_async_context
 
 
 class XiaoHongShuClient(AbstractApiClient):
@@ -105,7 +112,7 @@ class XiaoHongShuClient(AbstractApiClient):
         return_response = kwargs.pop("return_response", False)
         
         try:
-            async with httpx.AsyncClient(proxies=self.proxies) as client:
+            async with create_httpx_async_context(proxies=self.proxies) as client:
                 request_interval = random.uniform(1, 12)  # 随机增加2-7秒
                 await asyncio.sleep(request_interval)  # 设置请求时间间隔
 
@@ -175,7 +182,7 @@ class XiaoHongShuClient(AbstractApiClient):
         )
 
     async def get_note_media(self, url: str) -> Union[bytes, None]:
-        async with httpx.AsyncClient(proxies=self.proxies) as client:
+        async with create_httpx_async_context(proxies=self.proxies) as client:
             response = await client.request("GET", url, timeout=self.timeout)
             if not response.reason_phrase == "OK":
                 utils.logger.error(
@@ -409,13 +416,35 @@ class XiaoHongShuClient(AbstractApiClient):
             r"<script>window.__INITIAL_STATE__=(.+)<\/script>", html_content, re.M
         )
 
-        if match is None:
-            return {}
+    async def get_current_user_info(self) -> Dict:
+        """
+        获取当前登录用户信息
+        Returns:
+            用户信息字典，包含昵称、用户名、手机号等信息
+        """
+        uri = "/api/sns/web/v1/user/selfinfo"
+        try:
+            # 尝试使用新的API
+            return await self.get(uri)
+        except Exception as e:
+            utils.logger.warning(f"[XiaoHongShuClient.get_current_user_info] Primary API failed: {e}, trying alternative...")
+            # 如果主要API失败，尝试备用API        
+            return {
+                    "nickname": "unknown_user",
+                    "username": "unknown",
+                    "phone": "unknown",
+                    "user_id": "unknown",
+                    "error": f"Failed to get user info: {e}"
+                }
 
-        info = json.loads(match.group(1).replace(":undefined", ":null"), strict=False)
-        if info is None:
-            return {}
-        return info.get("user").get("userPageData")
+    async def get_current_user_nickname(self) -> str:
+        current_user_info = await self.get_current_user_info()
+        try:
+            current_user_nickname = current_user_info.get("basic_info").get("nickname")
+            return current_user_nickname
+        except Exception as e:
+            utils.logger.error(f"[XiaoHongShuClient.get_current_user_nickname] Error getting current user nickname: {e}")
+            return "unknown_user"
 
     async def get_notes_by_creator(
         self, creator: str, cursor: str, page_size: int = 30

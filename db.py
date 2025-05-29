@@ -47,6 +47,27 @@ async def init_mediacrawler_db():
     media_crawler_db_var.set(async_db_obj)
 
 
+async def init_supabase_db():
+    """
+    初始化Supabase数据库连接
+    Returns:
+
+    """
+    try:
+        from config.supabase_config import supabase_config
+        
+        if supabase_config.is_connected():
+            print("✅ Supabase连接成功!")
+            return True
+        
+        else:
+            raise ValueError("Supabase client not initialized. Please check your environment variables.")
+        
+    except Exception as e:
+        utils.logger.error(f"Failed to initialize Supabase connection: {e}")
+        raise
+
+
 async def init_db():
     """
     初始化db连接池
@@ -54,16 +75,37 @@ async def init_db():
 
     """
     utils.logger.info("[init_db] start init mediacrawler db connect object")
-    await init_mediacrawler_db()
+    
+    # 检查是否应该使用Supabase
+    if config.SAVE_DATA_OPTION == "db":
+        # 优先尝试使用Supabase
+        try:
+            await init_supabase_db()
+            utils.logger.info("[init_db] Successfully initialized Supabase connection")
+        except Exception as e:
+            utils.logger.error(f"[init_db] Failed to initialize Supabase: {e}")
+            utils.logger.info("[init_db] Falling back to MySQL...")
+            # 如果Supabase失败，回退到MySQL
+            await init_mediacrawler_db()
+    else:
+        # 对于其他存储选项，不需要数据库连接
+        utils.logger.info(f"[init_db] Using {config.SAVE_DATA_OPTION} storage, skipping database initialization")
+    
     utils.logger.info("[init_db] end init mediacrawler db connect object")
 
 
 async def close():
     """关闭连接"""
     utils.logger.info("[close] close mediacrawler db connection")
-    conn = db_conn_pool_var.get()
-    if conn is not None:
-        await conn.close()
+    
+    # 只有当使用MySQL时才需要关闭连接池
+    try:
+        conn = db_conn_pool_var.get()
+        if conn is not None:
+            await conn.close()
+    except:
+        # 如果没有设置连接池（例如使用Supabase），忽略错误
+        pass
 
 
 async def init_table_schema():

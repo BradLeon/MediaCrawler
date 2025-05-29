@@ -11,6 +11,7 @@
 
 import asyncio
 import sys
+import os
 
 import cmd_arg
 import config
@@ -25,6 +26,7 @@ from media_platform.xhs import XiaoHongShuCrawler
 from media_platform.zhihu import ZhihuCrawler
 
 from store.xhs.xhs_store_impl import XhsJsonStoreImplement
+from tools import utils
 
 class CrawlerFactory:
     CRAWLERS = {
@@ -56,6 +58,34 @@ async def main():
     
     # init db
     if config.SAVE_DATA_OPTION == "db":
+        # 检查Supabase环境变量
+        supabase_url = os.getenv('SEO_SUPABASE_URL')
+        supabase_key = os.getenv('SEO_SUPABASE_ANON_KEY')
+        
+        if not supabase_url or not supabase_key:
+            utils.logger.error("""
+            ==================== Supabase Configuration Error ====================
+            When SAVE_DATA_OPTION is set to "db", Supabase environment variables are required.
+            
+            Please set the following environment variables:
+            - SEO_SUPABASE_URL: Your Supabase project URL
+            - SEO_SUPABASE_ANON_KEY: Your Supabase anonymous key
+            
+            You can find these values in your Supabase project dashboard:
+            1. Go to https://supabase.com/dashboard
+            2. Select your project
+            3. Go to Settings > API
+            4. Copy the URL and anon/public key
+            
+            Example:
+            export SEO_SUPABASE_URL="https://your-project.supabase.co"
+            export SEO_SUPABASE_ANON_KEY="your-anon-key"
+            
+            Alternatively, you can change SAVE_DATA_OPTION to "json" or "csv" in config/base_config.py
+            =====================================================================
+            """)
+            sys.exit(1)
+        
         await db.init_db()
 
     crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
