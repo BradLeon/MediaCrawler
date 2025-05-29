@@ -191,25 +191,20 @@ async def supa_insert_note_detail(note_item: Dict) -> bool:
         # 准备数据 - 基于demo文件结构
         data = {
             "note_id": note_item.get("note_id"),
-            "type": note_item.get("type"),
             "title": note_item.get("title"),
+            "type": note_item.get("type"),
             "desc": note_item.get("desc"),
+            "note_url": note_item.get("note_url", ""),
             "video_url": note_item.get("video_url", ""),
-            "time": note_item.get("time"),
             "last_update_time": note_item.get("last_update_time"),
-            "user_id": note_item.get("user_id"),
+            "author_id": note_item.get("author_id"),
             "nickname": note_item.get("nickname"),
-            "avatar": note_item.get("avatar"),
             "liked_count": note_item.get("liked_count", ""),
             "collected_count": note_item.get("collected_count", ""),
             "comment_count": note_item.get("comment_count", ""),
             "share_count": note_item.get("share_count", ""),
-            "ip_location": note_item.get("ip_location", ""),
             "image_list": note_item.get("image_list", ""),
             "tag_list": note_item.get("tag_list", ""),
-            "note_url": note_item.get("note_url", ""),
-            "source_keyword": note_item.get("source_keyword", ""),
-            "xsec_token": note_item.get("xsec_token", ""),
         }
         
         # 使用upsert避免重复插入
@@ -337,9 +332,9 @@ async def supa_insert_search_result(search_item: Dict) -> bool:
         # 准备数据
         data = {
             "keyword": search_item.get("keyword"),
+            "search_account": search_item.get("search_account"),
             "rank": search_item.get("rank"),
             "note_id": search_item.get("note_id"),
-            "create_time": search_item.get("create_time"),
         }
         
         # 插入搜索结果

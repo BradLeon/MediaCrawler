@@ -46,21 +46,16 @@ async def test_db_store_basic():
             "title": "简单测试笔记",
             "desc": "这是一个简单的测试笔记",
             "video_url": "",
-            "time": int(datetime.now().timestamp() * 1000),
-            "last_update_time": int(datetime.now().timestamp() * 1000),
-            "user_id": "simple_test_user_001",
+            "last_update_time": "2025-05-29 10:00:00",
+            "author_id": "simple_test_user_001",
             "nickname": "简单测试用户",
-            "avatar": "https://example.com/avatar.jpg",
-            "liked_count": "10+",
-            "collected_count": "5+",
-            "comment_count": "3+",
-            "share_count": "2+",
-            "ip_location": "测试地点",
+            "liked_count": "10",
+            "collected_count": "5",
+            "comment_count": "3",
+            "share_count": "2",
             "image_list": "",
             "tag_list": "测试",
             "note_url": "https://www.xiaohongshu.com/explore/simple_test_note_001",
-            "source_keyword": "测试",
-            "xsec_token": "simple_test_token",
         }
         
         await store.store_content(test_content)
@@ -69,9 +64,9 @@ async def test_db_store_basic():
         # 测试搜索结果存储
         test_search = {
             "keyword": "简单测试",
+            "search_account": "简单测试用户",
             "rank": 1,
             "note_id": "simple_test_note_001",
-            "create_time": datetime.now().isoformat(),
         }
         
         await store.store_search_result(test_search)
