@@ -134,6 +134,7 @@ class XhsDbStoreImplement(AbstractStore):
 
         """
         # 尝试保存到MySQL（如果可用）
+        '''
         try:
             from .xhs_store_sql import (add_new_content,
                                         query_content_by_content_id,
@@ -148,7 +149,7 @@ class XhsDbStoreImplement(AbstractStore):
             utils.logger.info(f"Successfully saved content to MySQL: {note_id}")
         except Exception as e:
             utils.logger.warning(f"Failed to save content to MySQL: {e}, proceeding with Supabase only")
-        
+        '''
         # 同时保存到Supabase
         try:
             from .xhs_store_sql import supa_insert_note_detail
