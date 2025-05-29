@@ -1,4 +1,4 @@
-httpx==0.24.0
+httpx==0.27.0
 Pillow==10.0.0
 playwright==1.42.0
 tenacity==8.2.2
@@ -17,3 +17,5 @@ requests==2.32.3
 parsel==1.9.1
 pyexecjs==1.5.1
 pandas==2.2.3
+packaging>=20.0
+supabase==2.15.2

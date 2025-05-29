@@ -25,6 +25,11 @@ from tools import utils
 
 from .base_proxy import ProxyProvider
 from .types import IpInfoModel, ProviderNameEnum
+# 导入httpx兼容性工具
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils.httpx_compat import create_httpx_async_context
 
 
 class ProxyIpPool:
@@ -61,7 +66,7 @@ class ProxyIpPool:
             httpx_proxy = {
                 f"{proxy.protocol}": f"http://{proxy.user}:{proxy.password}@{proxy.ip}:{proxy.port}"
             }
-            async with httpx.AsyncClient(proxies=httpx_proxy) as client:
+            async with create_httpx_async_context(proxies=httpx_proxy) as client:
                 response = await client.get(self.valid_ip_url)
             if response.status_code == 200:
                 return True

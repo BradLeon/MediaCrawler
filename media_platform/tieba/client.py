@@ -27,6 +27,12 @@ from tools import utils
 from .field import SearchNoteType, SearchSortType
 from .help import TieBaExtractor
 
+# 导入httpx兼容性工具
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils.httpx_compat import create_httpx_async_context
+
 
 class BaiduTieBaClient(AbstractApiClient):
     def __init__(
@@ -60,7 +66,7 @@ class BaiduTieBaClient(AbstractApiClient):
 
         """
         actual_proxies = proxies if proxies else self.default_ip_proxy
-        async with httpx.AsyncClient(proxies=actual_proxies) as client:
+        async with create_httpx_async_context(proxies=actual_proxies) as client:
             response = await client.request(
                 method, url, timeout=self.timeout,
                 headers=self.headers, **kwargs

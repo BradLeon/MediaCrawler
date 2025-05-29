@@ -152,18 +152,23 @@ class XiaoHongShuCrawler(AbstractCrawler):
         utils.logger.info(
             "[XiaoHongShuCrawler.search] Begin search xiaohongshu keywords"
         )
-        search_result_item = {}
-        search_result_list = []
+        # 获取当前登录用户信息
+        current_user_account = await self.xhs_client.get_current_user_nickname()
+        
         xhs_limit_count = 20  # xhs limit page fixed value
         if config.CRAWLER_MAX_NOTES_COUNT < xhs_limit_count:
             config.CRAWLER_MAX_NOTES_COUNT = xhs_limit_count
         start_page = config.START_PAGE
         for keyword in config.KEYWORDS.split(","):
+            search_result_item = {}
+            search_result_list = []
+
             source_keyword_var.set(keyword)
             utils.logger.info(
                 f"[XiaoHongShuCrawler.search] Current search keyword: {keyword}"
             )
             page = 1
+            rank = 1
             search_id = get_search_id()
             while (
                 page - start_page + 1
@@ -189,28 +194,30 @@ class XiaoHongShuCrawler(AbstractCrawler):
                             else SearchSortType.GENERAL
                         ),
                     )
-                    
+                    '''
                     utils.logger.info(
                         f"[XiaoHongShuCrawler.search] Search notes res:{notes_res}"
                     )
-                    if not notes_res or not notes_res.get("has_more", False):
-                        utils.logger.info("No more content!")
-                        break
                     
                     utils.logger.info(
                         f"[XiaoHongShuCrawler.search] Search size notes res:{len(notes_res.get('items', {}))}"
                     )
+                    '''
+                    if not notes_res or not notes_res.get("has_more", False):
+                        utils.logger.info("No more content!")
+                        break
+                    
+                   
                     # todo: 获取排序结果，并记录
                     for index, post_item in enumerate(notes_res.get("items", {})):
-                        search_result_item.update({
+                        search_result_item = {
                             "keyword": keyword,
-                            "search_account": post_item.get("xsec_token"),
-                            "rank": index * page,
+                            "search_account": current_user_account,  # 使用当前用户昵称
+                            "rank": rank,
                             "note_id": post_item.get("id"),
-                    })
+                        }
                         search_result_list.append(search_result_item)
-                        utils.logger.info(f"[XiaoHongShuCrawler.search] search_result_item: {search_result_item}")
-
+                        rank += 1
                     '''
                     semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
                     task_list = [
@@ -239,17 +246,17 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     page += 1
                     
                     #await self.batch_get_note_comments(note_ids, xsec_tokens)
-
                 except DataFetchError:
                     utils.logger.error(
                         "[XiaoHongShuCrawler.search] Get note detail error"
                     )
                     break
-        # todo: 保存搜索结果
-        utils.logger.info(
-                        f"[XiaoHongShuCrawler.search] search_result_list: {search_result_list}"
-                    )
-        await xhs_store.save_search_result(search_result_list)
+                # todo: 每个keyword搜索结果保存一次
+            utils.logger.info(
+                            f"[XiaoHongShuCrawler.search] search_result_list: {search_result_list}"
+                            )
+            await xhs_store.save_search_result(search_result_list)  
+        
 
     async def get_creators_and_notes(self) -> None:
         """Get creator's notes and retrieve their comment information."""
