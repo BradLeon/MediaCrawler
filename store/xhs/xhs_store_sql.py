@@ -312,11 +312,11 @@ async def supa_insert_comment_detail(comment_item: Dict) -> bool:
             utils.logger.error(f"Failed to upsert comment_detail: {e}")
         return False
 
-async def supa_insert_search_result(search_item: Dict) -> bool:
+async def supa_insert_search_result(search_result_list: List[Dict]) -> bool:
     """
-    插入搜索结果到Supabase
+    批量插入搜索结果到Supabase
     Args:
-        search_item: 搜索结果字典，应包含keyword, rank, note_id等字段
+        search_result_list: 搜索结果列表，每个元素应包含keyword, rank, note_id等字段
 
     Returns:
         bool: 操作是否成功
@@ -326,22 +326,30 @@ async def supa_insert_search_result(search_item: Dict) -> bool:
             utils.logger.warning("Supabase not available, skipping search_result insert")
         return False
     
+    if not search_result_list:
+        if utils:
+            utils.logger.warning("Empty search_result_list, skipping insert")
+        return True
+    
     try:
         client = supabase_config.client
         
-        # 准备数据
-        data = {
-            "keyword": search_item.get("keyword"),
-            "search_account": search_item.get("search_account"),
-            "rank": search_item.get("rank"),
-            "note_id": search_item.get("note_id"),
-        }
+        # 准备批量数据
+        data_list = []
+        for search_item in search_result_list:
+            data = {
+                "keyword": search_item.get("keyword"),
+                "search_account": search_item.get("search_account"),
+                "rank": search_item.get("rank"),
+                "note_id": search_item.get("note_id"),
+            }
+            data_list.append(data)
         
-        # 插入搜索结果
-        result = client.table("xhs_search_result").insert(data).execute()
+        # 批量插入搜索结果
+        result = client.table("xhs_search_result").insert(data_list).execute()
         
         if utils:
-            utils.logger.info(f"Successfully inserted search_result for keyword: {search_item.get('keyword')}, note_id: {search_item.get('note_id')}")
+            utils.logger.info(f"Successfully inserted {len(data_list)} search_results")
         return True
         
     except Exception as e:

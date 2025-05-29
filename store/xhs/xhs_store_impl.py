@@ -113,7 +113,16 @@ class XhsCsvStoreImplement(AbstractStore):
         """
         await self.save_data_to_csv(save_item=creator, store_type="creator")
 
+    async def store_search_result(self, search_item_list: List[Dict]):
+        """
+        搜索结果存储实现 - 保存到CSV文件
+        Args:
+            search_item_list: 搜索结果列表，每个item包含keyword, rank, note_id
 
+        Returns:
+
+        """
+        await self.save_data_to_csv(save_item=search_item_list, store_type="search_result")
 
     # 使用示例
     async def convert_comments_to_conversations(self):
@@ -220,19 +229,19 @@ class XhsDbStoreImplement(AbstractStore):
         except Exception as e:
             utils.logger.error(f"Failed to save creator to Supabase: {e}")
 
-    async def store_search_result(self, search_item: Dict):
+    async def store_search_result(self, search_item_list: List[Dict]):
         """
         搜索结果存储实现 - 保存到Supabase数据库
         Args:
-            search_item: 搜索结果字典，应包含keyword, rank, note_id, create_time等字段
+            search_item_list: 搜索结果列表，每个item包含keyword, rank, note_id
 
         Returns:
 
         """
         try:
             from .xhs_store_sql import supa_insert_search_result
-            await supa_insert_search_result(search_item)
-            utils.logger.info(f"Successfully stored search result: {search_item.get('keyword')} - {search_item.get('note_id')}")
+            await supa_insert_search_result(search_item_list)
+            utils.logger.info(f"Successfully stored search result: keyword: {search_item_list[0].get('keyword')} - content size: {len(search_item_list)}")
         except Exception as e:
             utils.logger.error(f"Failed to save search result to Supabase: {e}")
 
@@ -337,6 +346,17 @@ class XhsJsonStoreImplement(AbstractStore):
 
         """
         await self.save_data_to_json(creator, "creator")
+    
+    async def store_search_result(self, search_item_list: List[Dict]):
+        """
+        搜索结果存储实现 - 保存到JSON文件
+        Args:
+            search_item_list: 搜索结果列表，每个item包含keyword, rank, note_id
+
+        Returns:
+
+        """
+        await self.save_data_to_json(search_item_list, "search_result")
 
     async def build_comment_conversations_v2(self, input_file: str, output_dir: str = None) -> None:
         """

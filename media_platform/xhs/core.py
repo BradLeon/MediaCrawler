@@ -189,25 +189,29 @@ class XiaoHongShuCrawler(AbstractCrawler):
                             else SearchSortType.GENERAL
                         ),
                     )
+                    
                     utils.logger.info(
                         f"[XiaoHongShuCrawler.search] Search notes res:{notes_res}"
                     )
                     if not notes_res or not notes_res.get("has_more", False):
                         utils.logger.info("No more content!")
                         break
+                    
+                    utils.logger.info(
+                        f"[XiaoHongShuCrawler.search] Search size notes res:{len(notes_res.get('items', {}))}"
+                    )
                     # todo: 获取排序结果，并记录
-                    print("notes_res:", json.dumps(notes_res, indent=4)) 
-
-                    search_result_item.update({
-                        "keyword": keyword,
-                        "search_account": notes_res.get("items", {})[0].get("xsec_token"),
-                        "search_id": search_id,
-                        "page": page,
-                        # "rank": rank,
-                        "note_id": notes_res.get("items", {}).get("id")
+                    for index, post_item in enumerate(notes_res.get("items", {})):
+                        search_result_item.update({
+                            "keyword": keyword,
+                            "search_account": post_item.get("xsec_token"),
+                            "rank": index * page,
+                            "note_id": post_item.get("id"),
                     })
-                    search_result_list.append(search_result_item)
+                        search_result_list.append(search_result_item)
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] search_result_item: {search_result_item}")
 
+                    '''
                     semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
                     task_list = [
                         self.get_note_detail_async_task(
@@ -219,18 +223,22 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         for post_item in notes_res.get("items", {})
                         if post_item.get("model_type") not in ("rec_query", "hot_query")
                     ]
+                    
                     note_details = await asyncio.gather(*task_list)
+                  
                     for note_detail in note_details:
                         if note_detail:
                             await xhs_store.update_xhs_note(note_detail)
                             await self.get_notice_media(note_detail)
                             note_ids.append(note_detail.get("note_id"))
                             xsec_tokens.append(note_detail.get("xsec_token"))
-                    page += 1
                     utils.logger.info(
                         f"[XiaoHongShuCrawler.search] Note details: {note_details}"
                     )
-                    await self.batch_get_note_comments(note_ids, xsec_tokens)
+                    '''
+                    page += 1
+                    
+                    #await self.batch_get_note_comments(note_ids, xsec_tokens)
 
                 except DataFetchError:
                     utils.logger.error(
@@ -238,7 +246,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     )
                     break
         # todo: 保存搜索结果
-        await xhs_store.store_search_result(search_result_list)
+        utils.logger.info(
+                        f"[XiaoHongShuCrawler.search] search_result_list: {search_result_list}"
+                    )
+        await xhs_store.save_search_result(search_result_list)
 
     async def get_creators_and_notes(self) -> None:
         """Get creator's notes and retrieve their comment information."""
