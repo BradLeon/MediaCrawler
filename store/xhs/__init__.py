@@ -65,7 +65,7 @@ def get_video_url_arr(note_item: Dict) -> List:
     return videoArr
 
 
-async def xupdate_xhs_note(note_item: Dict):
+async def update_xhs_note(note_item: Dict):
     """
     更新小红书笔记
     Args:
@@ -92,24 +92,24 @@ async def xupdate_xhs_note(note_item: Dict):
         "title": note_item.get("title") or note_item.get("desc", "")[:255], # 帖子标题
         "desc": note_item.get("desc", ""), # 帖子描述
         "video_url": video_url, # 帖子视频url
-        "time": note_item.get("time"), # 帖子发布时间
+        # "time": note_item.get("time"), # 帖子发布时间
         "last_update_time": note_item.get("last_update_time", 0), # 帖子最后更新时间
-        "user_id": user_info.get("user_id"), # 用户id
+        "author_id": user_info.get("user_id"), # 用户id
         "nickname": user_info.get("nickname"), # 用户昵称
-        "avatar": user_info.get("avatar"), # 用户头像
+        #"avatar": user_info.get("avatar"), # 用户头像
         "liked_count": interact_info.get("liked_count"), # 点赞数
         "collected_count": interact_info.get("collected_count"), # 收藏数
         "comment_count": interact_info.get("comment_count"), # 评论数
         "share_count": interact_info.get("share_count"), # 分享数
-        "ip_location": note_item.get("ip_location", ""), # ip地址
+        #"ip_location": note_item.get("ip_location", ""), # ip地址
         "image_list": ','.join([img.get('url', '') for img in image_list]), # 图片url
         "tag_list": ','.join([tag.get('name', '') for tag in tag_list if tag.get('type') == 'topic']), # 标签
-        "last_modify_ts": utils.get_current_timestamp(), # 最后更新时间戳（MediaCrawler程序生成的，主要用途在db存储的时候记录一条记录最新更新时间）
+        #"last_modify_ts": utils.get_current_timestamp(), # 最后更新时间戳（MediaCrawler程序生成的，主要用途在db存储的时候记录一条记录最新更新时间）
         "note_url": f"https://www.xiaohongshu.com/explore/{note_id}?xsec_token={note_item.get('xsec_token')}&xsec_source=pc_search", # 帖子url
-        "source_keyword": source_keyword_var.get(), # 搜索关键词
-        "xsec_token": note_item.get("xsec_token"), # xsec_token
+        #"source_keyword": source_keyword_var.get(), # 搜索关键词
+        #"xsec_token": note_item.get("xsec_token"), # xsec_token
     }
-    utils.logger.info(f"[store.xhs.update_xhs_note] xhs note: {local_db_item}")
+    #utils.logger.info(f"[store.xhs.update_xhs_note] xhs note: {local_db_item}")
     await XhsStoreFactory.create_store().store_content(local_db_item)
 
 
@@ -215,53 +215,16 @@ async def save_creator(user_id: str, creator: Dict):
     utils.logger.info(f"[store.xhs.save_creator] creator:{local_db_item}")
     await XhsStoreFactory.create_store().store_creator(local_db_item)
 
-async def save_search_result(user_id: str, search_result_list:  List[Dict]):
+async def save_search_result(search_result_list: List[Dict]):
     """
     保存小红书搜索排序结果
     Args:
-        user_id: 搜索者id
         search_result_list: 搜索排序结果列表
 
     Returns:
-
     """
-    user_info = search_result_list.get('basicInfo', {})
-
-    follows = 0
-    fans = 0
-    interaction = 0
-    for i in creator.get('interactions'):
-        if i.get('type') == 'follows':
-            follows = i.get('count')
-        elif i.get('type') == 'fans':
-            fans = i.get('count')
-        elif i.get('type') == 'interaction':
-            interaction = i.get('count')
-
-    def get_gender(gender):
-        if gender == 1:
-            return '女'
-        elif gender == 0:
-            return '男'
-        else:
-            return None
-
-    local_db_item = {
-        'user_id': user_id,  # 用户id
-        'nickname': user_info.get('nickname'),  # 昵称
-        'gender':  get_gender(user_info.get('gender')), # 性别
-        'avatar': user_info.get('images'), # 头像
-        'desc': user_info.get('desc'), # 个人描述
-        'ip_location': user_info.get('ipLocation'), # ip地址
-        'follows': follows, # 关注数
-        'fans': fans,  # 粉丝数
-        'interaction': interaction, # 互动数
-        'tag_list': json.dumps({tag.get('tagType'): tag.get('name') for tag in creator.get('tags')},
-                               ensure_ascii=False), # 标签
-        "last_modify_ts": utils.get_current_timestamp(), # 最后更新时间戳（MediaCrawler程序生成的，主要用途在db存储的时候记录一条记录最新更新时间）
-    }
-    utils.logger.info(f"[store.xhs.save_creator] creator:{local_db_item}")
-    await XhsStoreFactory.create_store().store_creator(local_db_item)
+ 
+    await XhsStoreFactory.create_store().store_search_result(search_result_list)
 
 
 
