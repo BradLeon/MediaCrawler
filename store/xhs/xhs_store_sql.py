@@ -171,7 +171,7 @@ except ImportError:
     SUPABASE_AVAILABLE = False
     utils = None
 
-async def supa_insert_note_detail(note_item: Dict) -> bool:
+async def supa_upsert_note_detail(note_item: Dict) -> bool:
     """
     插入或更新笔记详情到Supabase
     Args:
@@ -187,28 +187,10 @@ async def supa_insert_note_detail(note_item: Dict) -> bool:
     
     try:
         client = supabase_config.client
-        
-        # 准备数据 - 基于demo文件结构
-        data = {
-            "note_id": note_item.get("note_id"),
-            "title": note_item.get("title"),
-            "type": note_item.get("type"),
-            "desc": note_item.get("desc"),
-            "note_url": note_item.get("note_url", ""),
-            "video_url": note_item.get("video_url", ""),
-            "last_update_time": note_item.get("last_update_time"),
-            "author_id": note_item.get("author_id"),
-            "nickname": note_item.get("nickname"),
-            "liked_count": note_item.get("liked_count", ""),
-            "collected_count": note_item.get("collected_count", ""),
-            "comment_count": note_item.get("comment_count", ""),
-            "share_count": note_item.get("share_count", ""),
-            "image_list": note_item.get("image_list", ""),
-            "tag_list": note_item.get("tag_list", ""),
-        }
-        
+        utils.logger.info(f"insert note_item: {note_item}")
+     
         # 使用upsert避免重复插入
-        result = client.table("xhs_note").upsert(data, 
+        result = client.table("xhs_note").upsert(note_item, 
             on_conflict="note_id"
         ).execute()
         

@@ -25,7 +25,8 @@ import config
 from base.base_crawler import AbstractStore
 from tools import utils, words
 from var import crawler_type_var
-from datetime import datetime
+import datetime 
+import pytz  # 需要安装 pytz: pip install pytz
 
 import sys
 import os
@@ -142,17 +143,25 @@ class XhsDbStoreImplement(AbstractStore):
         Returns:
 
         """
+        # format image urls,否则图片无法脱离xhs平台打开。 
+        content_item['image_list'] = self.format_content_image_list(content_item.get('image_list'))
+        # format last_update_time
+        dt_utc = datetime.datetime.fromtimestamp(content_item['last_update_time']/1000).replace(tzinfo=datetime.timezone.utc)
+        # 2. 转为东八区（北京时间）
+        dt_east8 = dt_utc.astimezone(pytz.timezone('Asia/Shanghai'))
+        content_item['last_update_time'] = dt_east8.isoformat()
         # 优先尝试保存到Supabase
         supabase_success = False
         try:
-            from .xhs_store_sql import supa_insert_note_detail
-            await supa_insert_note_detail(content_item)
+            from .xhs_store_sql import supa_upsert_note_detail
+            await supa_upsert_note_detail(content_item)
             supabase_success = True
-            utils.logger.info(f"Successfully saved content to Supabase: {content_item.get('note_id')}")
+            
         except Exception as e:
             utils.logger.warning(f"Failed to save content to Supabase: {e}")
         
         # 如果Supabase失败，尝试MySQL作为备用
+        '''
         if not supabase_success:
             try:
                 from .xhs_store_sql import (add_new_content,
@@ -169,7 +178,7 @@ class XhsDbStoreImplement(AbstractStore):
             except Exception as e:
                 utils.logger.error(f"Failed to save content to both Supabase and MySQL: {e}")
                 raise
-
+        '''
     async def store_comment(self, comment_item: Dict):
         """
         Xiaohongshu comment DB storage implementation
@@ -265,6 +274,42 @@ class XhsDbStoreImplement(AbstractStore):
 
               # 实现你的逻辑
         print("Converting comments to conversations...")
+
+    def format_content_image_list(self, image_list: List[str]):
+        """
+        格式化内容文件中的图片URL
+        将形如 "@http://sns-webpic-qc.xhscdn.com/202504042337/568cb5c1362ab1078345424e8ef643a9/spectrum/1040g0k03120o8e1ohi004140m717516tkt5qoeo!nd_dft_wlteh_jpg_3"
+        转换为 "@http://sns-img-hw.xhscdn.com/spectrum/1040g0k03120o8e1ohi004140m717516tkt5qoeo!nd_dft_wlteh_jpg_3"
+        
+        将形如 "@http://sns-webpic-qc.xhscdn.com/202504021249/c38b871008ab80ac90667fe6ae9a24b8/1040g008316h4pr2k1e4g4bu0b6c0fk1fclskbp0!nd_dft_wlteh_jpg_3"
+        转换为 "@http://sns-img-hw.xhscdn.com/1040g008316h4pr2k1e4g4bu0b6c0fk1fclskbp0!nd_dft_wlteh_jpg_3"
+        """
+        import re
+
+        # 正则表达式模式 - 处理含有spectrum的链接
+        pattern_spectrum = r'(http://sns-webpic-qc\.xhscdn\.com/\d+/[a-f0-9]+/spectrum/)([a-zA-Z0-9!_.-]+)'
+        # 正则表达式模式 - 处理不含spectrum的链接
+        pattern_normal = r'(http://sns-webpic-qc\.xhscdn\.com/\d+/[a-f0-9]+/)([a-zA-Z0-9!_.-]+)'
+            
+        # 将逗号分隔的URL字符串拆分为列表
+        img_urls = image_list.split(',')
+        formatted_images = []
+        
+        for img_url in img_urls:
+            img_url = img_url.strip()
+            # 先尝试处理含有spectrum的链接
+            new_url = re.sub(pattern_spectrum, r'http://sns-img-hw.xhscdn.com/spectrum/\2', img_url)
+            # 如果URL没有变化，说明第一个模式没有匹配，尝试第二个模式
+            if new_url == img_url:
+                new_url = re.sub(pattern_normal, r'http://sns-img-hw.xhscdn.com/\2', img_url)
+            
+            formatted_images.append(new_url)
+        
+        # 将格式化后的URL列表重新以逗号连接
+        new_image_list = ','.join(formatted_images)
+        return new_image_list
+
+
 
 class XhsJsonStoreImplement(AbstractStore):
     json_store_path: str = "data/xhs/json"
@@ -920,7 +965,6 @@ class XhsJsonStoreImplement(AbstractStore):
         else:
             utils.logger.warning(f"未找到有效对话，未生成文件")
 
-    
 
     async def format_content_image_urls(self):
         """

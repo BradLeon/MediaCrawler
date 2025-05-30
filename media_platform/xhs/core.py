@@ -218,7 +218,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         }
                         search_result_list.append(search_result_item)
                         rank += 1
-                    '''
+
+                    
                     semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
                     task_list = [
                         self.get_note_detail_async_task(
@@ -239,10 +240,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
                             await self.get_notice_media(note_detail)
                             note_ids.append(note_detail.get("note_id"))
                             xsec_tokens.append(note_detail.get("xsec_token"))
-                    utils.logger.info(
-                        f"[XiaoHongShuCrawler.search] Note details: {note_details}"
-                    )
-                    '''
+                    # utils.logger.info(f"[XiaoHongShuCrawler.search] Note details: {note_details}")
+                    
                     page += 1
                     
                     #await self.batch_get_note_comments(note_ids, xsec_tokens)
