@@ -137,7 +137,7 @@ class XiaoHongShuLogin(AbstractLogin):
             utils.logger.info("[XiaoHongShuLogin.login_by_mobile] Login xiaohongshu failed by mobile login method ...")
             sys.exit()
 
-        wait_redirect_seconds = 20
+        wait_redirect_seconds = 60
         utils.logger.info(f"[XiaoHongShuLogin.login_by_mobile] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 
@@ -154,7 +154,7 @@ class XiaoHongShuLogin(AbstractLogin):
         if not base64_qrcode_img:
             utils.logger.info("[XiaoHongShuLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
             # if this website does not automatically popup login dialog box, we will manual click login button
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2)
             login_button_ele = self.context_page.locator("xpath=//*[@id='app']/div[1]/div[2]/div[1]/ul/div[1]/button")
             await login_button_ele.click()
             base64_qrcode_img = await utils.find_login_qrcode(
@@ -183,7 +183,7 @@ class XiaoHongShuLogin(AbstractLogin):
             utils.logger.info("[XiaoHongShuLogin.login_by_qrcode] Login xiaohongshu failed by qrcode login method ...")
             sys.exit()
 
-        wait_redirect_seconds = 20
+        wait_redirect_seconds = 60
         utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 

@@ -11,7 +11,7 @@
 
 # 基础配置
 PLATFORM = "xhs"
-KEYWORDS = "缕灵,livingproof"  # 关键词搜索配置，以英文逗号分隔
+KEYWORDS = "丰盈蓬松洗发水,livingproof,缕灵"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
 # 具体值参见media_platform.xxx.field下的枚举值，暂时只支持小红书
@@ -44,7 +44,7 @@ IP_PROXY_PROVIDER_NAME = "kuaidaili"
 HEADLESS = False
 
 # 是否保存登录状态
-SAVE_LOGIN_STATE = True
+SAVE_LOGIN_STATE = False
 
 # 数据保存类型选项配置,支持三种类型：csv、db、json, 最好保存到DB，有排重的功能。
 SAVE_DATA_OPTION = "db"  # csv or db or json
