@@ -58,7 +58,7 @@ class WeiboClient:
 
     async def request(self, method, url, **kwargs) -> Union[Response, Dict]:
         enable_return_response = kwargs.pop("return_response", False)
-        async with create_httpx_async_context(proxies=actual_proxies) as client:
+        async with create_httpx_async_context(proxies=self.proxies) as client:
             response = await client.request(
                 method, url, timeout=self.timeout,
                 **kwargs

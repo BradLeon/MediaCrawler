@@ -189,10 +189,8 @@ async def supa_upsert_note_detail(note_item: Dict) -> bool:
         client = supabase_config.client
         utils.logger.info(f"insert note_item: {note_item}")
      
-        # 使用upsert避免重复插入
-        result = client.table("xhs_note").upsert(note_item, 
-            on_conflict="note_id"
-        ).execute()
+        # 先尝试插入，如果冲突则更新
+        result = client.table("xhs_note").upsert(note_item).execute()
         
         if utils:
             utils.logger.info(f"Successfully upserted xhs_note for note_id: {note_item.get('note_id')}")
@@ -233,10 +231,8 @@ async def supa_insert_author_detail(author_item: Dict) -> bool:
             "ip_location": author_item.get("ip_location", ""),
         }
         
-        # 使用upsert避免重复插入
-        result = client.table("xhs_author").upsert(data, 
-            on_conflict="user_id"
-        ).execute()
+         # 先尝试插入，如果冲突则更新
+        result = client.table("xhs_author").upsert(data).execute()
         
         if utils:
             utils.logger.info(f"Successfully upserted author_detail for user_id: {author_item.get('user_id')}")
