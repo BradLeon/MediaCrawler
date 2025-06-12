@@ -426,28 +426,46 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 time.sleep(crawl_interval)
                 if not note_detail_from_html:
                     # 如果网页版笔记详情获取失败，则尝试不使用cookie获取
+                    utils.logger.info(
+                        f"[XiaoHongShuCrawler.get_note_detail_async_task] First attempt failed, trying without cookie for note_id: {note_id}"
+                    )
                     note_detail_from_html = (
                         await self.xhs_client.get_note_by_id_from_html(
                             note_id, xsec_source, xsec_token, enable_cookie=False
                         )
                     )
-                    utils.logger.error(
-                        f"[XiaoHongShuCrawler.get_note_detail_async_task] Get note detail error, note_id: {note_id}"
-                    )
                 if not note_detail_from_html:
                     # 如果网页版笔记详情获取失败，则尝试API获取
+                    utils.logger.info(
+                        f"[XiaoHongShuCrawler.get_note_detail_async_task] HTML parsing failed, trying API for note_id: {note_id}"
+                    )
                     note_detail_from_api: Optional[Dict] = (
                         await self.xhs_client.get_note_by_id(
                             note_id, xsec_source, xsec_token
                         )
                     )
+                    if note_detail_from_api:
+                        utils.logger.info(
+                            f"[XiaoHongShuCrawler.get_note_detail_async_task] Successfully got note detail from API for note_id: {note_id}, liked count: {note_detail_from_api.get('interact_info', {}).get('liked_count')}"
+                        )
+                    else:
+                        utils.logger.warning(
+                            f"[XiaoHongShuCrawler.get_note_detail_async_task] Failed to get note detail from both HTML and API for note_id: {note_id}"
+                        )
                 note_detail = note_detail_from_html or note_detail_from_api
                 if note_detail:
                     note_detail.update(
                         {"xsec_token": xsec_token, "xsec_source": xsec_source}
                     )
-
+                    utils.logger.info(
+                        f"[XiaoHongShuCrawler.get_note_detail_async_task] Successfully processed note_id: {note_id}"
+                    )
                     return note_detail
+                else:
+                    utils.logger.error(
+                        f"[XiaoHongShuCrawler.get_note_detail_async_task] All methods failed for note_id: {note_id}"
+                    )
+                    return None
             except DataFetchError as ex:
                 utils.logger.error(
                     f"[XiaoHongShuCrawler.get_note_detail_async_task] Get note detail error: {ex}"
