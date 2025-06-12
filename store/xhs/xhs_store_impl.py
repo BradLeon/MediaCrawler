@@ -150,11 +150,77 @@ class XhsDbStoreImplement(AbstractStore):
         # 2. 转为东八区（北京时间）
         dt_east8 = dt_utc.astimezone(pytz.timezone('Asia/Shanghai'))
         content_item['last_update_time'] = dt_east8.isoformat()
+        
+        # 准备要upsert的数据，默认使用新数据
+        new_content_item = content_item.copy()
+        
         # 优先尝试保存到Supabase
         supabase_success = False
         try:
-            from .xhs_store_sql import supa_upsert_note_detail
-            await supa_upsert_note_detail(content_item)
+            from .xhs_store_sql import supa_upsert_note_detail, supa_query_note_by_id
+            
+            # 先查询数据库中是否已存在该记录
+            note_id = content_item.get("note_id")
+            old_content_item = await supa_query_note_by_id(note_id)
+            
+            if old_content_item:
+                utils.logger.info(f"Found existing record for note_id: {note_id}, comparing timestamps...")
+                
+                # 比较时间戳 - 比较内容的last_update_time
+                new_last_update = content_item.get('last_update_time')
+                old_last_update = old_content_item.get('last_update_time')
+                
+                # 如果两个时间都存在，进行比较
+                if old_last_update and new_last_update:
+                    # 解析时间字符串进行比较
+                    try:
+                        # 处理新数据的时间（已经是ISO格式）
+                        if isinstance(new_last_update, str):
+                            # 处理不同的时间格式
+                            new_time_str = new_last_update.replace('Z', '+00:00')
+                            if 'T' not in new_time_str:
+                                # 处理类似 "2023-03-28 15:25:36+00" 的格式
+                                new_time_str = new_time_str.replace(' ', 'T')
+                            new_time = datetime.datetime.fromisoformat(new_time_str)
+                        else:
+                            # 如果还是时间戳格式
+                            new_time = datetime.datetime.fromtimestamp(new_last_update/1000).replace(tzinfo=datetime.timezone.utc)
+                        
+                        # 处理数据库中的时间
+                        if isinstance(old_last_update, str):
+                            # 处理不同的时间格式
+                            old_time_str = old_last_update.replace('Z', '+00:00')
+                            if 'T' not in old_time_str:
+                                # 处理类似 "2023-03-28 15:25:36+00" 的格式
+                                old_time_str = old_time_str.replace(' ', 'T')
+                            old_time = datetime.datetime.fromisoformat(old_time_str)
+                        else:
+                            old_time = old_last_update
+                        
+                        # 如果新内容的更新时间不大于数据库记录的更新时间，保留AI分析字段
+                        if new_time <= old_time:
+                            utils.logger.info(f"Content not updated since last analysis (new: {new_time}, old: {old_time}), preserving AI fields for note_id: {note_id}")
+                            
+                            # 保留AI分析相关字段
+                            ai_fields = ['brand_list', 'spu_list', 'emotion_dict', 'evaluation_dict']
+                            for field in ai_fields:
+                                if field in old_content_item and old_content_item[field]:
+                                    new_content_item[field] = old_content_item[field]
+                                    utils.logger.debug(f"Preserved AI field '{field}' from existing record")
+                        else:
+                            utils.logger.info(f"Content updated since last analysis (new: {new_time}, old: {old_time}), using new AI fields for note_id: {note_id}")
+                    
+                    except (ValueError, TypeError) as e:
+                        utils.logger.warning(f"Error parsing timestamps for note_id {note_id}: {e}, proceeding with full update")
+                else:
+                    utils.logger.info(f"Missing timestamp information for note_id {note_id}, proceeding with full update")
+                
+                utils.logger.info(f"Updating existing record for note_id: {note_id}")
+            else:
+                utils.logger.info(f"Creating new record for note_id: {note_id}")
+            
+            # 执行upsert操作
+            await supa_upsert_note_detail(new_content_item)
             supabase_success = True
             
         except Exception as e:
