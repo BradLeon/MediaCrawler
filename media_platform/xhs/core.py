@@ -424,6 +424,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     )
                 )
                 time.sleep(crawl_interval)
+                '''
                 if not note_detail_from_html:
                     # 如果网页版笔记详情获取失败，则尝试不使用cookie获取
                     utils.logger.info(
@@ -434,6 +435,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                             note_id, xsec_source, xsec_token, enable_cookie=False
                         )
                     )
+                '''
                 if not note_detail_from_html:
                     # 如果网页版笔记详情获取失败，则尝试API获取
                     utils.logger.info(
