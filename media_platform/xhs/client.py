@@ -587,6 +587,7 @@ class XiaoHongShuClient(AbstractApiClient):
             + note_id
             + f"?xsec_token={xsec_token}&xsec_source={xsec_source}"
         )
+    
         copy_headers = self.headers.copy()
         if not enable_cookie:
             del copy_headers["Cookie"]
@@ -594,6 +595,7 @@ class XiaoHongShuClient(AbstractApiClient):
         html = await self.request(
             method="GET", url=url, return_response=True, headers=copy_headers
         )
+
         # test
         #print("[XiaoHongShuClient.get_note_by_id_from_html] enable_cookie:", enable_cookie)
         #print("[XiaoHongShuClient.get_note_by_id_from_html] url:", url, "headers:", copy_headers)
