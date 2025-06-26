@@ -12,7 +12,7 @@
 # 基础配置
 PLATFORM = "xhs"
 #KEYWORDS = "丰盈蓬松洗发水,livingproof,缕灵, 塞那耳机"  # 关键词搜索配置，以英文逗号分隔
-KEYWORDS = "塞那耳机"  # 关键词搜索配置，以英文逗号分隔
+KEYWORDS = "缕灵"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
 # 具体值参见media_platform.xxx.field下的枚举值，暂时只支持小红书

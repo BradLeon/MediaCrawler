@@ -36,6 +36,56 @@ async def parse_cmd():
                         help='where to save the data (csv or db or json)', choices=['csv', 'db', 'json'], default=config.SAVE_DATA_OPTION)
     parser.add_argument('--cookies', type=str,
                         help='cookies used for cookie login type', default=config.COOKIES)
+    
+    # 新增的详情采集相关参数
+    parser.add_argument('--max_count', type=int,
+                        help='maximum number of notes/videos to crawl', default=config.CRAWLER_MAX_NOTES_COUNT)
+    parser.add_argument('--max_comments', type=int,
+                        help='maximum number of comments per note/video', default=config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES)
+    parser.add_argument('--headless', type=str2bool,
+                        help='whether to run browser in headless mode', default=config.HEADLESS)
+    parser.add_argument('--enable_proxy', type=str2bool,
+                        help='whether to enable IP proxy', default=config.ENABLE_IP_PROXY)
+    
+    # 小红书特定参数
+    parser.add_argument('--xhs_note_urls', type=str,
+                        help='XHS note URLs separated by semicolon for detail crawling', default=None)
+    
+    # 抖音特定参数  
+    parser.add_argument('--dy_ids', type=str,
+                        help='Douyin video IDs separated by semicolon for detail crawling', default=None)
+    
+    # 快手特定参数
+    parser.add_argument('--ks_ids', type=str,
+                        help='Kuaishou video IDs separated by semicolon for detail crawling', default=None)
+    
+    # B站特定参数
+    parser.add_argument('--bili_ids', type=str,
+                        help='Bilibili video BVIDs separated by semicolon for detail crawling', default=None)
+    
+    # 微博特定参数
+    parser.add_argument('--weibo_ids', type=str,
+                        help='Weibo post IDs separated by semicolon for detail crawling', default=None)
+    
+    # 知乎特定参数
+    parser.add_argument('--zhihu_urls', type=str,
+                        help='Zhihu URLs separated by semicolon for detail crawling', default=None)
+    
+    # 创作者模式参数
+    parser.add_argument('--xhs_creator_ids', type=str,
+                        help='XHS creator IDs separated by semicolon for creator crawling', default=None)
+    parser.add_argument('--dy_creator_ids', type=str,
+                        help='Douyin creator IDs separated by semicolon for creator crawling', default=None)
+    parser.add_argument('--ks_creator_ids', type=str,
+                        help='Kuaishou creator IDs separated by semicolon for creator crawling', default=None)
+    parser.add_argument('--bili_creator_ids', type=str,
+                        help='Bilibili creator IDs separated by semicolon for creator crawling', default=None)
+    parser.add_argument('--weibo_creator_ids', type=str,
+                        help='Weibo creator IDs separated by semicolon for creator crawling', default=None)
+    parser.add_argument('--zhihu_creator_urls', type=str,
+                        help='Zhihu creator URLs separated by semicolon for creator crawling', default=None)
+    parser.add_argument('--tieba_creator_urls', type=str,
+                        help='Tieba creator URLs separated by semicolon for creator crawling', default=None)
 
     args = parser.parse_args()
 
@@ -49,3 +99,50 @@ async def parse_cmd():
     config.ENABLE_GET_SUB_COMMENTS = args.get_sub_comment
     config.SAVE_DATA_OPTION = args.save_data_option
     config.COOKIES = args.cookies
+    
+    # 新增配置项覆盖
+    config.CRAWLER_MAX_NOTES_COUNT = args.max_count
+    config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = args.max_comments
+    config.HEADLESS = args.headless
+    config.ENABLE_IP_PROXY = args.enable_proxy
+    
+    # 平台特定的ID/URL列表处理 - Detail模式
+    if args.xhs_note_urls:
+        config.XHS_SPECIFIED_NOTE_URL_LIST = args.xhs_note_urls.split(';')
+    
+    if args.dy_ids:
+        config.DY_SPECIFIED_ID_LIST = args.dy_ids.split(';')
+        
+    if args.ks_ids:
+        config.KS_SPECIFIED_ID_LIST = args.ks_ids.split(';')
+        
+    if args.bili_ids:
+        config.BILI_SPECIFIED_ID_LIST = args.bili_ids.split(';')
+        
+    if args.weibo_ids:
+        config.WEIBO_SPECIFIED_ID_LIST = args.weibo_ids.split(';')
+        
+    if args.zhihu_urls:
+        config.ZHIHU_SPECIFIED_ID_LIST = args.zhihu_urls.split(';')
+    
+    # 平台特定的创作者ID/URL列表处理 - Creator模式
+    if args.xhs_creator_ids:
+        config.XHS_CREATOR_ID_LIST = args.xhs_creator_ids.split(';')
+    
+    if args.dy_creator_ids:
+        config.DY_CREATOR_ID_LIST = args.dy_creator_ids.split(';')
+        
+    if args.ks_creator_ids:
+        config.KS_CREATOR_ID_LIST = args.ks_creator_ids.split(';')
+        
+    if args.bili_creator_ids:
+        config.BILI_CREATOR_ID_LIST = args.bili_creator_ids.split(';')
+        
+    if args.weibo_creator_ids:
+        config.WEIBO_CREATOR_ID_LIST = args.weibo_creator_ids.split(';')
+        
+    if args.zhihu_creator_urls:
+        config.ZHIHU_CREATOR_URL_LIST = args.zhihu_creator_urls.split(';')
+        
+    if args.tieba_creator_urls:
+        config.TIEBA_CREATOR_URL_LIST = args.tieba_creator_urls.split(';')
