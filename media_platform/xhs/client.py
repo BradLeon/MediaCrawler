@@ -416,6 +416,14 @@ class XiaoHongShuClient(AbstractApiClient):
             r"<script>window.__INITIAL_STATE__=(.+)<\/script>", html_content, re.M
         )
 
+        if match is None:
+            return {}
+
+        info = json.loads(match.group(1).replace(":undefined", ":null"), strict=False)
+        if info is None:
+            return {}
+        return info.get("user").get("userPageData")
+
     async def get_current_user_info(self) -> Dict:
         """
         获取当前登录用户信息

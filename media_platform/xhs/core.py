@@ -194,43 +194,97 @@ class XiaoHongShuCrawler(AbstractCrawler):
                             else SearchSortType.GENERAL
                         ),
                     )
+                    
+                    # 添加详细的调试日志
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Raw notes_res type: {type(notes_res)}")
+                    if notes_res:
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Notes_res keys: {list(notes_res.keys()) if isinstance(notes_res, dict) else 'Not a dict'}")
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Has_more value: {notes_res.get('has_more', 'Key not found')}")
+                        
+                        items = notes_res.get("items", None)
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Items type: {type(items)}")
+                        if items is not None:
+                            if isinstance(items, list):
+                                utils.logger.info(f"[XiaoHongShuCrawler.search] Items length: {len(items)}")
+                            elif isinstance(items, dict):
+                                utils.logger.info(f"[XiaoHongShuCrawler.search] Items dict keys: {list(items.keys())}")
+                            else:
+                                utils.logger.warning(f"[XiaoHongShuCrawler.search] Items is neither list nor dict: {items}")
+                    else:
+                        utils.logger.warning("[XiaoHongShuCrawler.search] notes_res is None or empty")
+                    
                     '''
                     utils.logger.info(
                         f"[XiaoHongShuCrawler.search] Search notes res:{notes_res}"
                     )
+                    '''
                     
                     utils.logger.info(
-                        f"[XiaoHongShuCrawler.search] Search size notes res:{len(notes_res.get('items', {}))}"
+                        f"[XiaoHongShuCrawler.search] Search size notes res:{len(notes_res.get('items', {})) if notes_res and isinstance(notes_res.get('items', {}), list) else 'Unable to get length'}"
                     )
-                    '''
+                    
                     if not notes_res or not notes_res.get("has_more", False):
                         utils.logger.info("No more content!")
                         break
                     
+                    # 验证items是否为列表
+                    items = notes_res.get("items", [])
+                    if not isinstance(items, list):
+                        utils.logger.error(f"[XiaoHongShuCrawler.search] Expected items to be list, got {type(items)}: {items}")
+                        break
                    
                     # todo: 获取排序结果，并记录
-                    for index, post_item in enumerate(notes_res.get("items", {})):
-                        search_result_item = {
-                            "keyword": keyword,
-                            "search_account": current_user_account,  # 使用当前用户昵称
-                            "rank": rank,
-                            "note_id": post_item.get("id"),
-                        }
-                        search_result_list.append(search_result_item)
-                        rank += 1
+                    try:
+                        for index, post_item in enumerate(items):
+                            if not isinstance(post_item, dict):
+                                utils.logger.warning(f"[XiaoHongShuCrawler.search] Post item {index} is not a dict: {type(post_item)}, {post_item}")
+                                continue
+                                
+                            search_result_item = {
+                                "keyword": keyword,
+                                "search_account": current_user_account,  # 使用当前用户昵称
+                                "rank": rank,
+                                "note_id": post_item.get("id"),
+                            }
+                            search_result_list.append(search_result_item)
+                            rank += 1
+                            
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Successfully processed {len(items)} items for ranking")
+                    except Exception as e:
+                        utils.logger.error(f"[XiaoHongShuCrawler.search] Error processing items for ranking: {e}")
+                        utils.logger.error(f"[XiaoHongShuCrawler.search] Items content: {items}")
+                        break
 
                     
                     semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
-                    task_list = [
-                        self.get_note_detail_async_task(
-                            note_id=post_item.get("id"),
-                            xsec_source=post_item.get("xsec_source"),
-                            xsec_token=post_item.get("xsec_token"),
-                            semaphore=semaphore,
-                        )
-                        for post_item in notes_res.get("items", {})
-                        if post_item.get("model_type") not in ("rec_query", "hot_query")
-                    ]
+                    
+                    # 创建任务列表时添加更多验证
+                    try:
+                        valid_items = []
+                        for post_item in items:
+                            if not isinstance(post_item, dict):
+                                utils.logger.warning(f"[XiaoHongShuCrawler.search] Skipping non-dict item: {post_item}")
+                                continue
+                            if post_item.get("model_type") not in ("rec_query", "hot_query"):
+                                valid_items.append(post_item)
+                        
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Valid items count: {len(valid_items)}")
+                        
+                        task_list = [
+                            self.get_note_detail_async_task(
+                                note_id=post_item.get("id"),
+                                xsec_source=post_item.get("xsec_source"),
+                                xsec_token=post_item.get("xsec_token"),
+                                semaphore=semaphore,
+                            )
+                            for post_item in valid_items
+                        ]
+                        
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Created {len(task_list)} tasks")
+                        
+                    except Exception as e:
+                        utils.logger.error(f"[XiaoHongShuCrawler.search] Error creating task list: {e}")
+                        break
                     
                     note_details = await asyncio.gather(*task_list)
                   
@@ -245,12 +299,18 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     page += 1
                     
                     #await self.batch_get_note_comments(note_ids, xsec_tokens)
-                except DataFetchError:
+                except DataFetchError as e:
                     utils.logger.error(
-                        "[XiaoHongShuCrawler.search] Get note detail error"
+                        f"[XiaoHongShuCrawler.search] Get note detail error: {e}"
                     )
+                    utils.logger.error(f"[XiaoHongShuCrawler.search] Current page: {page}, keyword: {keyword}")
                     break
-                # todo: 每个keyword搜索结果保存一次
+                except Exception as e:
+                    utils.logger.error(f"[XiaoHongShuCrawler.search] Unexpected error: {e}")
+                    utils.logger.error(f"[XiaoHongShuCrawler.search] Error type: {type(e)}")
+                    import traceback
+                    utils.logger.error(f"[XiaoHongShuCrawler.search] Traceback: {traceback.format_exc()}")
+                    break
             utils.logger.info(
                             f"[XiaoHongShuCrawler.search] search_result_list: {search_result_list}"
                             )
@@ -417,6 +477,9 @@ class XiaoHongShuCrawler(AbstractCrawler):
             else:
                 crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
             try:
+                utils.logger.info(f"[XiaoHongShuCrawler.get_note_detail_async_task] Starting task for note_id: {note_id}")
+                utils.logger.info(f"[XiaoHongShuCrawler.get_note_detail_async_task] xsec_source: {xsec_source}, xsec_token: {xsec_token}")
+                
                 # 尝试直接获取网页版笔记详情，携带cookie
                 note_detail_from_html: Optional[Dict] = (
                     await self.xhs_client.get_note_by_id_from_html(
@@ -424,6 +487,9 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     )
                 )
                 time.sleep(crawl_interval)
+                
+                utils.logger.info(f"[XiaoHongShuCrawler.get_note_detail_async_task] HTML result for {note_id}: {'Success' if note_detail_from_html else 'Failed'}")
+                
                 '''
                 if not note_detail_from_html:
                     # 如果网页版笔记详情获取失败，则尝试不使用cookie获取
@@ -470,13 +536,23 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     return None
             except DataFetchError as ex:
                 utils.logger.error(
-                    f"[XiaoHongShuCrawler.get_note_detail_async_task] Get note detail error: {ex}"
+                    f"[XiaoHongShuCrawler.get_note_detail_async_task] DataFetchError for note_id {note_id}: {ex}"
                 )
+                utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] DataFetchError type: {type(ex)}")
+                import traceback
+                utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] DataFetchError traceback: {traceback.format_exc()}")
                 return None
             except KeyError as ex:
                 utils.logger.error(
-                    f"[XiaoHongShuCrawler.get_note_detail_async_task] have not fund note detail note_id:{note_id}, err: {ex}"
+                    f"[XiaoHongShuCrawler.get_note_detail_async_task] KeyError for note_id:{note_id}, err: {ex}"
                 )
+                utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] KeyError traceback: {traceback.format_exc()}")
+                return None
+            except Exception as ex:
+                utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] Unexpected error for note_id {note_id}: {ex}")
+                utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] Unexpected error type: {type(ex)}")
+                import traceback
+                utils.logger.error(f"[XiaoHongShuCrawler.get_note_detail_async_task] Unexpected error traceback: {traceback.format_exc()}")
                 return None
 
     async def batch_get_note_comments(

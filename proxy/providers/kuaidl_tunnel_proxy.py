@@ -17,8 +17,8 @@ class KuaiDaiLiTunnelProxy():
         kdl_secret_id = os.getenv("kdl_tunnel_proxy_secret_id", "你的快代理secert_id")
         kdl_signature = os.getenv("kdl_tunnel_proxy_signature", "你的快代理签名")
    
-        self.user = kdl_user_name
-        self.password = kdl_user_pwd
-        self.tunnel = "t308.kdltpspro.com:15818"
-        self.secret_id = kdl_secret_id
-        self.signature = kdl_signature
+        self.user = 't15266542856997'
+        self.password = 'wv0r9fwg'
+        self.tunnel = "n531.kdltps.com:15818"
+        self.secret_id = 'o8z4qhird66tzl8wd1l3'
+        self.signature = 'rrpd3u5kd7s28i6ngv07ein5nfcecsxx'

@@ -318,16 +318,39 @@ async def supa_insert_search_result(search_result_list: List[Dict]) -> bool:
     try:
         client = supabase_config.client
         
+        if utils:
+            utils.logger.info(f"Preparing to insert {len(search_result_list)} search results")
+        
         # 准备批量数据
         data_list = []
-        for search_item in search_result_list:
+        for index, search_item in enumerate(search_result_list):
+            if not isinstance(search_item, dict):
+                if utils:
+                    utils.logger.warning(f"Search item {index} is not a dict: {type(search_item)}, skipping")
+                continue
+                
             data = {
                 "keyword": search_item.get("keyword"),
                 "search_account": search_item.get("search_account"),
                 "rank": search_item.get("rank"),
                 "note_id": search_item.get("note_id"),
             }
+            
+            # 验证必要字段
+            if not data["keyword"] or not data["note_id"]:
+                if utils:
+                    utils.logger.warning(f"Search item {index} missing required fields: {data}")
+                continue
+                
             data_list.append(data)
+        
+        if not data_list:
+            if utils:
+                utils.logger.warning("No valid search results to insert after filtering")
+            return True
+        
+        if utils:
+            utils.logger.info(f"Inserting {len(data_list)} valid search results to Supabase")
         
         # 批量插入搜索结果
         result = client.table("xhs_search_result").insert(data_list).execute()
@@ -339,6 +362,11 @@ async def supa_insert_search_result(search_result_list: List[Dict]) -> bool:
     except Exception as e:
         if utils:
             utils.logger.error(f"Failed to insert search_result: {e}")
+            utils.logger.error(f"Search result list type: {type(search_result_list)}")
+            utils.logger.error(f"Search result list length: {len(search_result_list) if search_result_list else 0}")
+            # 添加详细的错误信息
+            import traceback
+            utils.logger.error(f"Detailed error traceback: {traceback.format_exc()}")
         return False
 
 async def supa_query_note_by_id(note_id: str) -> Optional[Dict]:

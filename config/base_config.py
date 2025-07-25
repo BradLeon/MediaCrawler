@@ -12,6 +12,7 @@
 # 基础配置
 PLATFORM = "xhs"
 #KEYWORDS = "丰盈蓬松洗发水,livingproof,缕灵, 塞那耳机"  # 关键词搜索配置，以英文逗号分隔
+#KEYWORDS = "livingproof,缕灵, 塞那耳机"  # 关键词搜索配置，以英文逗号分隔
 KEYWORDS = "塞那耳机"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
@@ -30,7 +31,7 @@ UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML,
 ENABLE_IP_PROXY = False
 
 # 未启用代理时的最大爬取间隔，单位秒（暂时仅对XHS有效）
-CRAWLER_MAX_SLEEP_SEC = 3
+CRAWLER_MAX_SLEEP_SEC = 5
 
 # 代理IP池数量
 IP_PROXY_POOL_COUNT = 100

@@ -1,0 +1,27 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+include SUPABASE_SETUP.md
+include __init__.py
+include main.py
+include db.py
+include async_db.py
+include var.py
+include recv_sms.py
+recursive-include docs *
+recursive-include libs *.js
+recursive-include schema *.sql
+recursive-include constant *.py
+recursive-include cache *.py
+recursive-include utils *.py
+prune browser_data
+prune data
+prune venv
+prune __pycache__
+prune .git
+prune test
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *~
+global-exclude .DS_Store 

@@ -123,7 +123,15 @@ class XhsCsvStoreImplement(AbstractStore):
         Returns:
 
         """
-        await self.save_data_to_csv(save_item=search_item_list, store_type="search_result")
+        if not search_item_list:
+            utils.logger.warning("Empty search_item_list provided to CSV store_search_result, skipping storage")
+            return
+        
+        utils.logger.info(f"Saving {len(search_item_list)} search results to CSV")
+        
+        # CSV存储需要逐个保存每个搜索结果项
+        for search_item in search_item_list:
+            await self.save_data_to_csv(save_item=search_item, store_type="search_result")
 
     # 使用示例
     async def convert_comments_to_conversations(self):
@@ -327,12 +335,28 @@ class XhsDbStoreImplement(AbstractStore):
         Returns:
 
         """
+        if not search_item_list:
+            utils.logger.warning("Empty search_item_list provided to store_search_result, skipping storage")
+            return
+        
+        utils.logger.info(f"Storing search results: {len(search_item_list)} items")
+        
         try:
             from .xhs_store_sql import supa_insert_search_result
             await supa_insert_search_result(search_item_list)
-            utils.logger.info(f"Successfully stored search result: keyword: {search_item_list[0].get('keyword')} - content size: {len(search_item_list)}")
+            
+            # 安全地获取关键词信息用于日志记录
+            first_item = search_item_list[0] if search_item_list else {}
+            keyword = first_item.get('keyword', 'unknown') if first_item else 'unknown'
+            
+            utils.logger.info(f"Successfully stored search result: keyword: {keyword} - content size: {len(search_item_list)}")
         except Exception as e:
             utils.logger.error(f"Failed to save search result to Supabase: {e}")
+            utils.logger.error(f"Search item list length: {len(search_item_list) if search_item_list else 0}")
+            # 添加更详细的错误信息
+            import traceback
+            utils.logger.error(f"Detailed error traceback: {traceback.format_exc()}")
+            raise
 
     # 使用示例
     async def convert_comments_to_conversations(self):
@@ -481,7 +505,15 @@ class XhsJsonStoreImplement(AbstractStore):
         Returns:
 
         """
-        await self.save_data_to_json(search_item_list, "search_result")
+        if not search_item_list:
+            utils.logger.warning("Empty search_item_list provided to JSON store_search_result, skipping storage")
+            return
+        
+        utils.logger.info(f"Saving {len(search_item_list)} search results to JSON")
+        
+        # JSON存储需要逐个保存每个搜索结果项
+        for search_item in search_item_list:
+            await self.save_data_to_json(search_item, "search_result")
 
     async def build_comment_conversations_v2(self, input_file: str, output_dir: str = None) -> None:
         """
