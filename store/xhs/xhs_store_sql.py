@@ -278,17 +278,20 @@ async def supa_insert_comment_detail(comment_item: Dict) -> bool:
             "like_count": comment_item.get("like_count", 0),
             "pictures": comment_item.get("pictures", ""),
             "parent_comment_id": comment_item.get("parent_comment_id"),
+            "sub_comment_count": comment_item.get("sub_comment_count", 0),
             "is_author": comment_item.get("is_author", False),
-            "ip_location": comment_item.get("ip_location", ""),
+            "create_time": comment_item.get("create_time", 0),
+            #"created_at": comment_item.get("last_modify_ts", utils.get_current_timestamp()),
+            #"ip_location": comment_item.get("ip_location", ""),
         }
         
         # 使用upsert避免重复插入
-        result = client.table("xhs_comment_detail").upsert(data, 
+        result = client.table("xhs_comment").upsert(data, 
             on_conflict="comment_id"
         ).execute()
         
         if utils:
-            utils.logger.info(f"Successfully upserted comment_detail for comment_id: {comment_item.get('comment_id')}")
+            utils.logger.info(f"Successfully upserted xhs_comment for comment_id: {comment_item.get('comment_id')}")
         return True
         
     except Exception as e:

@@ -46,7 +46,7 @@ IP_PROXY_PROVIDER_NAME = "kuaidaili"
 HEADLESS = False
 
 # 是否保存登录状态
-SAVE_LOGIN_STATE = False
+SAVE_LOGIN_STATE = True
 
 # 数据保存类型选项配置,支持三种类型：csv、db、json, 最好保存到DB，有排重的功能。
 SAVE_DATA_OPTION = "db"  # csv or db or json
@@ -85,7 +85,8 @@ ENABLE_GET_SUB_COMMENTS = True
 
 # 指定小红书需要爬虫的笔记URL列表, 目前要携带xsec_token和xsec_source参数
 XHS_SPECIFIED_NOTE_URL_LIST = [
-    "https://www.xiaohongshu.com/explore/6751582c000000000703a4b5?xsec_token=ABnNAMdt7IJoQfO_vX4E2YzhxDW4XewzgJU1mAUYppOB8=&xsec_source=pc_user"
+    #"https://www.xiaohongshu.com/explore/6751582c000000000703a4b5?xsec_token=ABnNAMdt7IJoQfO_vX4E2YzhxDW4XewzgJU1mAUYppOB8=&xsec_source=pc_user",
+    "https://www.xiaohongshu.com/explore/689364b200000000020036d3?xsec_token=ABB_dvF-lNQf96mcsmKqqNv-TgDxwBXOqEr4AuzAFr5g8=&xsec_source=pc_search&source=web_explore_feed"
     # ........................
 ]
 

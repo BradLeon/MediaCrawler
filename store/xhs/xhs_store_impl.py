@@ -264,6 +264,8 @@ class XhsDbStoreImplement(AbstractStore):
         """
         # 优先尝试保存到Supabase
         supabase_success = False
+        utils.logger.info(f"Start saved comment to Supabase: {comment_item.get('comment_id')}")
+
         try:
             from .xhs_store_sql import supa_insert_comment_detail
             await supa_insert_comment_detail(comment_item)

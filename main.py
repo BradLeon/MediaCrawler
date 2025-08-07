@@ -49,7 +49,7 @@ class CrawlerFactory:
 
 async def main():
     # parse cmd
-   # await cmd_arg.parse_cmd()
+    await cmd_arg.parse_cmd()
 
    # store = XhsJsonStoreImplement()
    # await store.convert_comments_to_conversations()  # 使用 await 调用异步方法
