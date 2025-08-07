@@ -148,7 +148,7 @@ async def update_xhs_note_comment(note_id: str, comment_item: Dict):
     local_db_item = {
         "comment_id": comment_id, # 评论id
         "create_time": comment_item.get("create_time"), # 评论时间
-        "ip_location": comment_item.get("ip_location"), # ip地址
+        #"ip_location": comment_item.get("ip_location"), # ip地址
         "note_id": note_id, # 帖子id
         "content": comment_item.get("content"), # 评论内容
         "user_id": user_info.get("user_id"), # 用户id
