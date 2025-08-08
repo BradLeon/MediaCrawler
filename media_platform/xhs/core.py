@@ -300,7 +300,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     
                     page += 1
                     
-                    #await self.batch_get_note_comments(note_ids, xsec_tokens)
+                    await self.batch_get_note_comments(note_ids, xsec_tokens)
                 except DataFetchError as e:
                     utils.logger.error(
                         f"[XiaoHongShuCrawler.search] Get note detail error: {e}"
