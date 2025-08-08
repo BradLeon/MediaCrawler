@@ -244,7 +244,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     
                     page += 1
                     
-                    #await self.batch_get_note_comments(note_ids, xsec_tokens)
+                    await self.batch_get_note_comments(note_ids, xsec_tokens)
                 except DataFetchError:
                     utils.logger.error(
                         "[XiaoHongShuCrawler.search] Get note detail error"
@@ -313,20 +313,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
         note_details = await asyncio.gather(*task_list)
         for note_detail in note_details:
             if note_detail:
-                try:
-                    # 增加过滤条件：时间过滤条件&点赞数过滤条件，一般认为评论数大于点赞数，可能是活动或水军导致，分析意义不大
-                    last_update_time = note_detail.get("last_update_time", 0) 
-                    interact_info = note_detail.get("interact_info", {})
-                    
-                    # 使用安全转换函数
-                    comment_count = self.safe_int_convert(interact_info.get("comment_count", 0))
-                    liked_count = self.safe_int_convert(interact_info.get("liked_count", 0))
-                    
-                    if (comment_count < config.COMMENT_COUNT_THRESHOLD or 
-                        liked_count < comment_count or 
-                        last_update_time < config.LAST_UPDATE_TIME_THRESHOLD):
-                        continue
-                        
+                try:    
                     await xhs_store.update_xhs_note(note_detail)
                     filtered_note_list.append(note_detail.get("note_id"))
                     xsec_tokens.append(note_detail.get("xsec_token"))
