@@ -46,7 +46,7 @@ IP_PROXY_PROVIDER_NAME = "kuaidaili"
 HEADLESS = False
 
 # 是否保存登录状态
-SAVE_LOGIN_STATE = True
+SAVE_LOGIN_STATE = False
 
 # 数据保存类型选项配置,支持三种类型：csv、db、json, 最好保存到DB，有排重的功能。
 SAVE_DATA_OPTION = "db"  # csv or db or json
