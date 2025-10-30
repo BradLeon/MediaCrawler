@@ -171,9 +171,94 @@ except ImportError:
     SUPABASE_AVAILABLE = False
     utils = None
 
+def normalize_count_field(value: str) -> Optional[int]:
+    """
+    标准化计数字段，将 "10+", "100+", "1000+" 等转换为整数
+    Args:
+        value: 原始值字符串
+    Returns:
+        转换后的整数，如果无法转换则返回None
+    """
+    if not value:
+        return None
+
+    # 如果已经是整数，直接返回
+    if isinstance(value, int):
+        return value
+
+    # 转换为字符串处理
+    value_str = str(value).strip()
+
+    # 移除 '+' 符号并尝试转换
+    if '+' in value_str:
+        try:
+            # "10+" -> 10
+            return int(value_str.replace('+', ''))
+        except ValueError:
+            return None
+
+    # 尝试直接转换
+    try:
+        return int(value_str)
+    except ValueError:
+        return None
+
+def has_fuzzy_data(note_item: Dict) -> bool:
+    """
+    检查笔记数据是否包含模糊数据（如 "10+"）
+    Args:
+        note_item: 笔记信息字典
+    Returns:
+        bool: 是否包含模糊数据
+    """
+    fuzzy_fields = ['liked_count', 'collected_count', 'comment_count', 'share_count']
+
+    for field in fuzzy_fields:
+        value = note_item.get(field)
+        if value and isinstance(value, str) and '+' in value:
+            return True
+
+    return False
+
+async def supa_upsert_note_fuzzy(note_item: Dict) -> bool:
+    """
+    插入或更新包含模糊数据的笔记到xhs_note_fuzzy表
+    Args:
+        note_item: 笔记信息字典（包含模糊数据如 "10+"）
+    Returns:
+        bool: 操作是否成功
+    """
+    if not SUPABASE_AVAILABLE or not supabase_config.is_connected():
+        if utils:
+            utils.logger.warning("Supabase not available, skipping note_fuzzy insert")
+        return False
+
+    try:
+        client = supabase_config.client
+
+        # xhs_note_fuzzy表的所有计数字段都是varchar，直接保存原始值
+        if utils:
+            utils.logger.info(f"Inserting fuzzy data to xhs_note_fuzzy for note_id: {note_item.get('note_id')}")
+
+        # 使用on_conflict参数指定在note_id冲突时进行更新
+        result = client.table("xhs_note_fuzzy").upsert(
+            note_item,
+            on_conflict="note_id"
+        ).execute()
+
+        if utils:
+            utils.logger.info(f"Successfully upserted xhs_note_fuzzy for note_id: {note_item.get('note_id')}")
+        return True
+
+    except Exception as e:
+        if utils:
+            utils.logger.error(f"Failed to upsert xhs_note_fuzzy: {e}")
+        return False
+
 async def supa_upsert_note_detail(note_item: Dict) -> bool:
     """
     插入或更新笔记详情到Supabase
+    支持自动fallback：如果数据包含模糊值（如 "10+"），会尝试转换或保存到fuzzy表
     Args:
         note_item: 笔记信息字典
 
@@ -184,25 +269,73 @@ async def supa_upsert_note_detail(note_item: Dict) -> bool:
         if utils:
             utils.logger.warning("Supabase not available, skipping note_detail insert")
         return False
-    
+
+    # 检查是否包含模糊数据
+    if has_fuzzy_data(note_item):
+        if utils:
+            utils.logger.warning(f"Detected fuzzy data in note_item for note_id: {note_item.get('note_id')}")
+
+        # 尝试清洗数据
+        cleaned_item = note_item.copy()
+        count_fields = ['liked_count', 'collected_count', 'comment_count', 'share_count']
+
+        conversion_failed = False
+        for field in count_fields:
+            if field in cleaned_item:
+                normalized_value = normalize_count_field(cleaned_item[field])
+                if normalized_value is not None:
+                    cleaned_item[field] = normalized_value
+                    if utils:
+                        utils.logger.info(f"Normalized {field}: {note_item[field]} -> {normalized_value}")
+                else:
+                    conversion_failed = True
+                    if utils:
+                        utils.logger.warning(f"Failed to normalize {field}: {note_item[field]}")
+
+        # 如果转换成功，尝试插入到xhs_note表
+        if not conversion_failed:
+            try:
+                client = supabase_config.client
+                if utils:
+                    utils.logger.info(f"Attempting to insert normalized data to xhs_note: {cleaned_item.get('note_id')}")
+
+                result = client.table("xhs_note").upsert(
+                    cleaned_item,
+                    on_conflict="note_id"
+                ).execute()
+
+                if utils:
+                    utils.logger.info(f"Successfully upserted xhs_note with normalized data for note_id: {cleaned_item.get('note_id')}")
+                return True
+            except Exception as e:
+                if utils:
+                    utils.logger.warning(f"Failed to upsert normalized data to xhs_note: {e}, falling back to xhs_note_fuzzy")
+
+        # 如果转换失败或插入失败，fallback到xhs_note_fuzzy表
+        return await supa_upsert_note_fuzzy(note_item)
+
+    # 正常数据，直接插入到xhs_note表
     try:
         client = supabase_config.client
         utils.logger.info(f"insert note_item: {note_item}")
-     
+
         # 使用on_conflict参数指定在note_id冲突时进行更新
         result = client.table("xhs_note").upsert(
-            note_item, 
+            note_item,
             on_conflict="note_id"
         ).execute()
-        
+
         if utils:
             utils.logger.info(f"Successfully upserted xhs_note for note_id: {note_item.get('note_id')}")
         return True
-        
+
     except Exception as e:
         if utils:
             utils.logger.error(f"Failed to upsert xhs_note: {e}")
-        return False
+        # 最后的兜底：即使是正常数据，如果插入失败也尝试fuzzy表
+        if utils:
+            utils.logger.info(f"Attempting fallback to xhs_note_fuzzy for note_id: {note_item.get('note_id')}")
+        return await supa_upsert_note_fuzzy(note_item)
 
 async def supa_insert_author_detail(author_item: Dict) -> bool:
     """

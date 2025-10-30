@@ -46,7 +46,9 @@ async def parse_cmd():
                         help='whether to run browser in headless mode', default=config.HEADLESS)
     parser.add_argument('--enable_proxy', type=str2bool,
                         help='whether to enable IP proxy', default=config.ENABLE_IP_PROXY)
-    
+    parser.add_argument('--save_login_state', type=str2bool,
+                        help='whether to save login state and reuse cookies', default=config.SAVE_LOGIN_STATE)
+
     # 小红书特定参数
     parser.add_argument('--xhs_note_urls', type=str,
                         help='XHS note URLs separated by semicolon for detail crawling', default=None)
@@ -105,7 +107,8 @@ async def parse_cmd():
     config.CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = args.max_comments
     config.HEADLESS = args.headless
     config.ENABLE_IP_PROXY = args.enable_proxy
-    
+    config.SAVE_LOGIN_STATE = args.save_login_state
+
     # 平台特定的ID/URL列表处理 - Detail模式
     if args.xhs_note_urls:
         config.XHS_SPECIFIED_NOTE_URL_LIST = args.xhs_note_urls.split(';')

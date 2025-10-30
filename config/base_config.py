@@ -66,14 +66,14 @@ MAX_CONCURRENCY_NUM = 2
 ENABLE_GET_IMAGES = False
 
 # 是否开启爬评论模式, 默认开启爬评论
-ENABLE_GET_COMMENTS = True
+ENABLE_GET_COMMENTS = False
 
 # 爬取一级评论的数量控制(单视频/帖子)
 CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 300
 
 # 是否开启爬二级评论模式, 默认不开启爬二级评论
 # 老版本项目使用了 db, 则需参考 schema/tables.sql line 287 增加表字段
-ENABLE_GET_SUB_COMMENTS = True
+ENABLE_GET_SUB_COMMENTS = False
 
 # 已废弃⚠️⚠️⚠️指定小红书需要爬虫的笔记ID列表
 # 已废弃⚠️⚠️⚠️ 指定笔记ID笔记列表会因为缺少xsec_token和xsec_source参数导致爬取失败
