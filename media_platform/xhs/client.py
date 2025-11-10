@@ -30,6 +30,7 @@ from html import unescape
 from .exception import DataFetchError, IPBlockError
 from .field import SearchNoteType, SearchSortType
 from .help import get_search_id, sign
+from .secsign import seccore_signv2_playwright
 
 # 导入httpx兼容性工具
 import sys
@@ -71,7 +72,7 @@ class XiaoHongShuClient(AbstractApiClient):
 
     async def _pre_headers(self, url: str, data=None) -> Dict:
         """
-        请求头参数签名
+        请求头参数签名 (使用新的 window.mnsv2 签名方法)
         Args:
             url:
             data:
@@ -79,20 +80,22 @@ class XiaoHongShuClient(AbstractApiClient):
         Returns:
 
         """
-        encrypt_params = await self.playwright_page.evaluate(
-            "([url, data]) => window._webmsxyw(url,data)", [url, data]
-        )
+        # 使用新的签名方法 seccore_signv2_playwright
+        x_s = await seccore_signv2_playwright(self.playwright_page, url, data)
+        x_t = str(int(time.time() * 1000))
+
+        # 获取本地存储用于生成 x-s-common
         local_storage = await self.playwright_page.evaluate("() => window.localStorage")
         signs = sign(
             a1=self.cookie_dict.get("a1", ""),
             b1=local_storage.get("b1", ""),
-            x_s=encrypt_params.get("X-s", ""),
-            x_t=str(encrypt_params.get("X-t", "")),
+            x_s=x_s,
+            x_t=x_t,
         )
 
         headers = {
-            "X-S": signs["x-s"],
-            "X-T": signs["x-t"],
+            "X-S": x_s,
+            "X-T": x_t,
             "x-S-Common": signs["x-s-common"],
             "X-B3-Traceid": signs["x-b3-traceid"],
         }
