@@ -89,8 +89,32 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
                 # 创建客户端和尝试登录
                 self.xhs_client = await self.create_xhs_client(httpx_proxy)
-                login_successful = await self.xhs_client.pong()
-                
+
+                # 使用详细的登录状态检查
+                from .client import LoginStatus
+                login_status, error_msg = await self.xhs_client.check_login_status()
+                utils.logger.info(f"[XiaoHongShuCrawler.start] Login status: {login_status.value}, message: {error_msg}")
+
+                login_successful = (login_status == LoginStatus.OK)
+
+                # 如果遇到风控，记录警告并继续（不需要重新登录）
+                if login_status == LoginStatus.RISK_CONTROL:
+                    utils.logger.warning(
+                        f"[XiaoHongShuCrawler.start] Risk control detected: {error_msg}. "
+                        "This is NOT a login issue. Please wait a while or verify manually in the browser."
+                    )
+                    # 将login_successful设为True，避免触发不必要的登录流程
+                    login_successful = True
+
+                # 如果IP被封，记录错误并继续（重新登录无法解决）
+                if login_status == LoginStatus.BLOCKED:
+                    utils.logger.error(
+                        f"[XiaoHongShuCrawler.start] IP blocked: {error_msg}. "
+                        "Re-login won't help. Consider changing IP or waiting."
+                    )
+                    # 将login_successful设为True，避免无意义的登录尝试
+                    login_successful = True
+
                 # 如果启用了保存登录状态但当前没有登录成功，尝试从保存的cookies登录
                 if not login_successful and config.SAVE_LOGIN_STATE:
                     login_obj = XiaoHongShuLogin(

@@ -16,6 +16,7 @@ import time
 import re
 from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urlencode
+from enum import Enum
 
 import httpx
 from playwright.async_api import BrowserContext, Page
@@ -35,6 +36,15 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.httpx_compat import create_httpx_async_context
+
+
+class LoginStatus(Enum):
+    """登录状态枚举"""
+    OK = "ok"                           # 登录正常
+    NEED_LOGIN = "need_login"           # 需要登录
+    BLOCKED = "blocked"                 # IP被封禁
+    RISK_CONTROL = "risk_control"       # 触发风控，需要等待或验证
+    VERIFICATION_NEEDED = "verification_needed"  # 需要验证码
 
 
 class XiaoHongShuClient(AbstractApiClient):
@@ -128,12 +138,33 @@ class XiaoHongShuClient(AbstractApiClient):
                 
                 if return_response:
                     return response.text
+
                 data: Dict = response.json()
+
+                # 记录响应的关键信息用于调试
+                utils.logger.debug(
+                    f"[XiaoHongShuClient.request] Response - "
+                    f"status_code: {response.status_code}, "
+                    f"success: {data.get('success')}, "
+                    f"code: {data.get('code')}, "
+                    f"msg: {data.get('msg', '')[:100]}"  # 限制消息长度
+                )
+
                 if data["success"]:
                     return data.get("data", data.get("success", {}))
                 elif data["code"] == self.IP_ERROR_CODE:
+                    utils.logger.error(
+                        f"[XiaoHongShuClient.request] IP blocked - "
+                        f"code: {data.get('code')}, msg: {data.get('msg')}"
+                    )
                     raise IPBlockError(self.IP_ERROR_STR)
                 else:
+                    utils.logger.error(
+                        f"[XiaoHongShuClient.request] Request failed - "
+                        f"status_code: {response.status_code}, "
+                        f"code: {data.get('code')}, "
+                        f"msg: {data.get('msg')}"
+                    )
                     raise DataFetchError(data.get("msg", None))
         except httpx.ProxyError as e:
             utils.logger.error(f"代理错误: {e}")
@@ -192,25 +223,96 @@ class XiaoHongShuClient(AbstractApiClient):
             else:
                 return response.content
 
+    async def check_login_status(self) -> tuple[LoginStatus, str]:
+        """
+        检查登录状态，返回详细的状态信息
+
+        Returns:
+            tuple[LoginStatus, str]: (状态枚举, 错误消息)
+        """
+        utils.logger.info("[XiaoHongShuClient.check_login_status] Checking login status...")
+
+        try:
+            note_card: Dict = await self.get_note_by_keyword(keyword="美妆OOTD")
+
+            # 打印返回的关键信息用于调试
+            items_count = len(note_card.get("items", []))
+            has_more = note_card.get("has_more", False)
+            utils.logger.info(
+                f"[XiaoHongShuClient.check_login_status] Response received - "
+                f"items_count: {items_count}, has_more: {has_more}, "
+                f"keys: {list(note_card.keys())}"
+            )
+
+            if note_card.get("items"):
+                utils.logger.info("[XiaoHongShuClient.check_login_status] Login status: OK")
+                return LoginStatus.OK, ""
+            else:
+                # 返回了数据但没有items，可能需要登录
+                utils.logger.warning(
+                    f"[XiaoHongShuClient.check_login_status] No items in response, may need login. "
+                    f"Response keys: {list(note_card.keys())}"
+                )
+                return LoginStatus.NEED_LOGIN, "No items in search result"
+
+        except IPBlockError as e:
+            # IP被封禁
+            utils.logger.error(f"[XiaoHongShuClient.check_login_status] IP blocked: {e}")
+            return LoginStatus.BLOCKED, str(e)
+
+        except DataFetchError as e:
+            error_msg = str(e)
+            utils.logger.error(f"[XiaoHongShuClient.check_login_status] Data fetch error: {error_msg}")
+
+            # 根据错误消息判断具体情况
+            if "账号异常" in error_msg or "稍后重试" in error_msg or "稍后重启" in error_msg:
+                # 风控相关错误
+                return LoginStatus.RISK_CONTROL, error_msg
+            elif "验证码" in error_msg or "验证" in error_msg:
+                # 需要验证码
+                return LoginStatus.VERIFICATION_NEEDED, error_msg
+            elif "登录" in error_msg or "权限" in error_msg:
+                # 需要登录
+                return LoginStatus.NEED_LOGIN, error_msg
+            else:
+                # 其他数据获取错误，可能是登录问题
+                return LoginStatus.NEED_LOGIN, error_msg
+
+        except Exception as e:
+            # 其他异常，保守处理，认为可能需要登录
+            utils.logger.error(f"[XiaoHongShuClient.check_login_status] Unexpected error: {e}")
+            return LoginStatus.NEED_LOGIN, str(e)
+
     async def pong(self) -> bool:
         """
-        用于检查登录态是否失效了
-        Returns:
+        用于检查登录态是否失效了（向后兼容的简化版本）
 
+        Returns:
+            bool: True=登录正常, False=需要登录
+
+        Note: 此方法为向后兼容保留，推荐使用 check_login_status() 获取详细状态
         """
-        """get a note to check if login state is ok"""
         utils.logger.info("[XiaoHongShuClient.pong] Begin to pong xhs...")
-        ping_flag = False
-        try:
-            note_card: Dict = await self.get_note_by_keyword(keyword="小红书")
-            if note_card.get("items"):
-                ping_flag = True
-        except Exception as e:
-            utils.logger.error(
-                f"[XiaoHongShuClient.pong] Ping xhs failed: {e}, and try to login again..."
+
+        status, error_msg = await self.check_login_status()
+
+        if status == LoginStatus.OK:
+            return True
+        elif status == LoginStatus.RISK_CONTROL:
+            # 风控情况：cookies有效但被限制，不需要重新登录
+            utils.logger.warning(
+                f"[XiaoHongShuClient.pong] Risk control detected: {error_msg}. "
+                "Cookies are still valid, no need to re-login. Please wait or verify manually."
             )
-            ping_flag = False
-        return ping_flag
+            return True  # 返回True，避免触发重新登录
+        elif status == LoginStatus.BLOCKED:
+            # IP被封，cookies可能有效但IP有问题
+            utils.logger.error(f"[XiaoHongShuClient.pong] IP blocked: {error_msg}")
+            return True  # 返回True，因为重新登录也解决不了IP问题
+        else:
+            # 其他情况需要登录
+            utils.logger.error(f"[XiaoHongShuClient.pong] Login required: {error_msg}")
+            return False
 
 
     async def update_cookies(self, browser_context: BrowserContext):
