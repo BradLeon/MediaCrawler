@@ -42,7 +42,7 @@ class XiaoHongShuLogin(AbstractLogin):
         self.login_phone = login_phone
         self.cookie_str = cookie_str
 
-    @retry(stop=stop_after_attempt(900), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(1200), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str) -> bool:
         """
             Check if the current login status is successful and return True otherwise return False
@@ -69,6 +69,15 @@ class XiaoHongShuLogin(AbstractLogin):
             await self.login_by_mobile()
         elif config.LOGIN_TYPE == "cookie":
             await self.login_by_cookies()
+            # Cookie登录是一种被动的登录方式（只添加cookie不需要用户交互）
+            # 它只能在cookies仍然有效时使用
+            # 如果在这里被调用，说明可能是从旧代码路径进入的
+            # 为了安全起见，添加一个警告日志
+            utils.logger.warning(
+                "[XiaoHongShuLogin.begin] Using cookie login method. "
+                "Note: This method does not support user interaction. "
+                "If cookies are invalid, login may fail."
+            )
         else:
             raise ValueError("[XiaoHongShuLogin.begin]I nvalid Login Type Currently only supported qrcode or phone or cookies ...")
         await self.save_cookies()
@@ -81,14 +90,14 @@ class XiaoHongShuLogin(AbstractLogin):
             # 小红书进入首页后，有可能不会自动弹出登录框，需要手动点击登录按钮
             login_button_ele = await self.context_page.wait_for_selector(
                 selector="xpath=//*[@id='app']/div[1]/div[2]/div[1]/ul/div[1]/button",
-                timeout=5000
+                timeout=3000
             )
             await login_button_ele.click()
             # 弹窗的登录对话框也有两种形态，一种是直接可以看到手机号和验证码的
             # 另一种是需要点击切换到手机登录的
             element = await self.context_page.wait_for_selector(
                 selector='xpath=//div[@class="login-container"]//div[@class="other-method"]/div[1]',
-                timeout=10000
+                timeout=30000
             )
             await element.click()
         except Exception as e:
@@ -137,7 +146,7 @@ class XiaoHongShuLogin(AbstractLogin):
             utils.logger.info("[XiaoHongShuLogin.login_by_mobile] Login xiaohongshu failed by mobile login method ...")
             sys.exit()
 
-        wait_redirect_seconds = 60
+        wait_redirect_seconds = 20
         utils.logger.info(f"[XiaoHongShuLogin.login_by_mobile] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 

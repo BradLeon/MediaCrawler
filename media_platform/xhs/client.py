@@ -40,7 +40,7 @@ from utils.httpx_compat import create_httpx_async_context
 class XiaoHongShuClient(AbstractApiClient):
     def __init__(
         self,
-        timeout=10,
+        timeout=20,
         proxies=None,
         *,
         headers: Dict[str, str],

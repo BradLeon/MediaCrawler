@@ -111,8 +111,17 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 
                 # 如果仍未登录成功，使用配置的登录方式
                 if not login_successful:
+                    # 当cookies失效需要重新登录时，强制使用需要用户交互的登录方式
+                    # 避免使用cookie方式导致浏览器立即关闭
+                    actual_login_type = config.LOGIN_TYPE
+                    if config.LOGIN_TYPE == "cookie":
+                        utils.logger.warning(
+                            "[XiaoHongShuCrawler.start] Cookies expired, switching to qrcode login for user interaction"
+                        )
+                        actual_login_type = "qrcode"
+
                     login_obj = XiaoHongShuLogin(
-                        login_type=config.LOGIN_TYPE,
+                        login_type=actual_login_type,
                         login_phone="",
                         browser_context=self.browser_context,
                         context_page=self.context_page,
@@ -120,7 +129,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     )
                     await login_obj.begin()
                     await self.xhs_client.update_cookies(browser_context=self.browser_context)
-                    
+
                     # 如果启用了保存登录状态，保存cookies
                     if config.SAVE_LOGIN_STATE:
                         await login_obj.save_cookies()
