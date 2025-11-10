@@ -173,9 +173,14 @@ except ImportError:
 
 def normalize_count_field(value: str) -> Optional[int]:
     """
-    标准化计数字段，将 "10+", "100+", "1000+" 等转换为整数
+    标准化计数字段，支持多种格式的转换：
+    - "10+", "100+" -> 移除'+'号
+    - "1.6万", "3万" -> 转换为实际数值（16000, 30000）
+    - "1.2亿" -> 转换为实际数值（120000000）
+    - "5千" -> 转换为实际数值（5000）
+
     Args:
-        value: 原始值字符串
+        value: 原始值字符串或整数
     Returns:
         转换后的整数，如果无法转换则返回None
     """
@@ -189,34 +194,70 @@ def normalize_count_field(value: str) -> Optional[int]:
     # 转换为字符串处理
     value_str = str(value).strip()
 
-    # 移除 '+' 符号并尝试转换
+    # 1. 处理中文数字单位（万、亿、千）
+    chinese_units = {
+        '亿': 100000000,  # 1亿
+        '万': 10000,       # 1万
+        '千': 1000,        # 1千
+        'k': 1000,         # 1k (有些平台用k)
+        'K': 1000,         # 1K
+        'w': 10000,        # 1w (有些平台用w代表万)
+        'W': 10000,        # 1W
+    }
+
+    for unit, multiplier in chinese_units.items():
+        if unit in value_str:
+            try:
+                # 提取数字部分："1.6万" -> "1.6"
+                num_part = value_str.replace(unit, '').strip()
+                # 转换为浮点数后乘以倍数
+                num = float(num_part) if num_part else 1.0
+                result = int(num * multiplier)
+                return result
+            except ValueError:
+                continue
+
+    # 2. 移除 '+' 符号并尝试转换
     if '+' in value_str:
         try:
             # "10+" -> 10
             return int(value_str.replace('+', ''))
         except ValueError:
-            return None
+            pass
 
-    # 尝试直接转换
+    # 3. 尝试直接转换为整数
     try:
         return int(value_str)
+    except ValueError:
+        pass
+
+    # 4. 尝试转换为浮点数再取整（处理小数情况）
+    try:
+        return int(float(value_str))
     except ValueError:
         return None
 
 def has_fuzzy_data(note_item: Dict) -> bool:
     """
-    检查笔记数据是否包含模糊数据（如 "10+"）
+    检查笔记数据是否包含模糊数据，包括：
+    - "10+" 格式
+    - "1.6万"、"3万" 等中文数字格式
+    - "1.2亿"、"5千" 等中文单位格式
+
     Args:
         note_item: 笔记信息字典
     Returns:
         bool: 是否包含模糊数据
     """
     fuzzy_fields = ['liked_count', 'collected_count', 'comment_count', 'share_count']
+    fuzzy_indicators = ['+', '万', '亿', '千', 'k', 'K', 'w', 'W']
 
     for field in fuzzy_fields:
         value = note_item.get(field)
-        if value and isinstance(value, str) and '+' in value:
-            return True
+        if value and isinstance(value, str):
+            # 检查是否包含任何模糊数据标志
+            if any(indicator in value for indicator in fuzzy_indicators):
+                return True
 
     return False
 
