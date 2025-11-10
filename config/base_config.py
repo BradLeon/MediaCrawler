@@ -26,6 +26,16 @@ CRAWLER_TYPE = (
 # 自定义User Agent（暂时仅对XHS有效）
 # UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
 UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+
+# 小红书签名生成方式配置
+# xhshow: 使用纯Python签名库（性能最佳，资源占用低）
+# browser: 使用浏览器签名（稳定性最佳，需要Playwright）
+# hybrid: 混合模式，优先xhshow，失败时降级到browser（推荐）
+XHS_SIGN_METHOD = "hybrid"
+
+# xhshow签名超时时间（秒）
+XHS_SIGN_TIMEOUT = 5
+
 # 是否开启 IP 代理
 ENABLE_IP_PROXY = False
 

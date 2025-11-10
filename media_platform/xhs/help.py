@@ -42,11 +42,13 @@ def sign(a1="", b1="", x_s="", x_t=""):
     encode_str = encodeUtf8(json.dumps(common, separators=(',', ':')))
     x_s_common = b64Encode(encode_str)
     x_b3_traceid = get_b3_trace_id()
+    x_xray_traceid = get_xray_trace_id()
     return {
         "x-s": x_s,
         "x-t": x_t,
         "x-s-common": x_s_common,
-        "x-b3-traceid": x_b3_traceid
+        "x-b3-traceid": x_b3_traceid,
+        "x-xray-traceid": x_xray_traceid
     }
 
 
@@ -55,6 +57,16 @@ def get_b3_trace_id():
     je = 16
     e = ""
     for t in range(16):
+        e += re[random.randint(0, je - 1)]
+    return e
+
+
+def get_xray_trace_id():
+    """生成x-xray-traceid（32位随机hex字符串）"""
+    re = "abcdef0123456789"
+    je = 16
+    e = ""
+    for t in range(32):  # 32位，不是16位
         e += re[random.randint(0, je - 1)]
     return e
 

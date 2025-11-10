@@ -31,6 +31,7 @@ from .exception import DataFetchError, IPBlockError
 from .field import SearchNoteType, SearchSortType
 from .help import get_search_id, sign
 from .secsign import seccore_signv2_playwright
+from .sign_adapter import XHSSignAdapter
 
 # 导入httpx兼容性工具
 import sys
@@ -70,18 +71,27 @@ class XiaoHongShuClient(AbstractApiClient):
         self.playwright_page = playwright_page
         self.cookie_dict = cookie_dict
 
+        # 初始化签名适配器（混合模式）
+        sign_method = getattr(config, 'XHS_SIGN_METHOD', 'hybrid')
+        self.sign_adapter = XHSSignAdapter(
+            method=sign_method,
+            playwright_page=self.playwright_page,
+            cookie_dict=self.cookie_dict,
+            timeout=getattr(config, 'XHS_SIGN_TIMEOUT', 5)
+        )
+
     async def _pre_headers(self, url: str, data=None) -> Dict:
         """
-        请求头参数签名 (使用新的 window.mnsv2 签名方法)
+        请求头参数签名 (使用签名适配器 - 支持xhshow/browser混合模式)
         Args:
-            url:
-            data:
+            url: 请求URL
+            data: 请求数据
 
         Returns:
-
+            完整的headers字典
         """
-        # 使用新的签名方法 seccore_signv2_playwright
-        x_s = await seccore_signv2_playwright(self.playwright_page, url, data)
+        # 使用签名适配器生成x-s签名（混合模式：优先xhshow，失败降级browser）
+        x_s = await self.sign_adapter.generate_signature(url, data)
         x_t = str(int(time.time() * 1000))
 
         # 获取本地存储用于生成 x-s-common
@@ -93,11 +103,20 @@ class XiaoHongShuClient(AbstractApiClient):
             x_t=x_t,
         )
 
+        # 更新User-Agent到最新Chrome版本
+        updated_user_agent = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        )
+
         headers = {
             "X-S": x_s,
             "X-T": x_t,
             "x-S-Common": signs["x-s-common"],
             "X-B3-Traceid": signs["x-b3-traceid"],
+            "X-Xray-Traceid": signs["x-xray-traceid"],  # 新增
+            "User-Agent": updated_user_agent,  # 更新
         }
         self.headers.update(headers)
         return self.headers
