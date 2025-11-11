@@ -51,6 +51,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
         from store.xhs import XhsStoreFactory
         self.store = XhsStoreFactory.create_store()
 
+        # 添加重登录状态追踪
+        self.login_retry_count = 0      # 当前重登录次数
+        self.max_login_retries = 3      # 最多重登录 3 次
+        self.login_obj = None           # 保存 login 对象引用
+
     async def start(self) -> None:
         try:
             playwright_proxy, httpx_proxy = None, None
@@ -144,19 +149,19 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         )
                         actual_login_type = "qrcode"
 
-                    login_obj = XiaoHongShuLogin(
+                    self.login_obj = XiaoHongShuLogin(
                         login_type=actual_login_type,
                         login_phone="",
                         browser_context=self.browser_context,
                         context_page=self.context_page,
                         cookie_str=config.COOKIES,
                     )
-                    await login_obj.begin()
+                    await self.login_obj.begin()
                     await self.xhs_client.update_cookies(browser_context=self.browser_context)
 
                     # 如果启用了保存登录状态，保存cookies
                     if config.SAVE_LOGIN_STATE:
-                        await login_obj.save_cookies()
+                        await self.login_obj.save_cookies()
 
                 crawler_type_var.set(config.CRAWLER_TYPE)
                 if config.CRAWLER_TYPE == "search":
@@ -179,6 +184,70 @@ class XiaoHongShuCrawler(AbstractCrawler):
         finally:
             # 确保资源被正确释放
             await self.stop()
+
+    async def handle_cookie_expired(self) -> bool:
+        """
+        处理 cookies 失效，执行自动重登录
+
+        流程：
+        1. 检查重登录次数
+        2. 创建/重用 login 对象
+        3. 执行二维码登录
+        4. 更新客户端 cookies
+        5. 保存新的 cookies
+
+        Returns:
+            bool: True=重登录成功, False=重登录失败
+        """
+        self.login_retry_count += 1
+
+        # 检查是否超过最大重试次数
+        if self.login_retry_count > self.max_login_retries:
+            utils.logger.error(
+                f"[XiaoHongShuCrawler.handle_cookie_expired] "
+                f"Max login retry reached ({self.max_login_retries}), stopping crawler"
+            )
+            return False
+
+        utils.logger.warning(
+            f"[XiaoHongShuCrawler.handle_cookie_expired] "
+            f"Cookie expired detected, attempting re-login "
+            f"(attempt {self.login_retry_count}/{self.max_login_retries})"
+        )
+
+        try:
+            # 创建或重用 login 对象
+            if not self.login_obj:
+                self.login_obj = XiaoHongShuLogin(
+                    login_type="qrcode",  # 强制使用二维码登录
+                    login_phone="",
+                    browser_context=self.browser_context,
+                    context_page=self.context_page,
+                    cookie_str="",
+                )
+
+            # 执行重新登录（会打开浏览器显示二维码）
+            utils.logger.info("[XiaoHongShuCrawler.handle_cookie_expired] Starting QR code login...")
+            await self.login_obj.begin()
+
+            # 更新客户端 cookies
+            await self.xhs_client.update_cookies(browser_context=self.browser_context)
+            utils.logger.info("[XiaoHongShuCrawler.handle_cookie_expired] Cookies updated")
+
+            # 保存新的 cookies
+            if config.SAVE_LOGIN_STATE:
+                await self.login_obj.save_cookies()
+                utils.logger.info("[XiaoHongShuCrawler.handle_cookie_expired] New cookies saved")
+
+            utils.logger.info("[XiaoHongShuCrawler.handle_cookie_expired] Re-login successful, continuing crawl")
+
+            # 重登录成功后重置计数器
+            self.login_retry_count = 0
+            return True
+
+        except Exception as e:
+            utils.logger.error(f"[XiaoHongShuCrawler.handle_cookie_expired] Re-login failed: {e}")
+            return False
 
     async def search(self) -> None:
         """Search for notes and retrieve their comment information."""
@@ -276,13 +345,42 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     # utils.logger.info(f"[XiaoHongShuCrawler.search] Note details: {note_details}")
                     
                     page += 1
-                    
+
                     await self.batch_get_note_comments(note_ids, xsec_tokens)
-                except DataFetchError:
-                    utils.logger.error(
-                        "[XiaoHongShuCrawler.search] Get note detail error"
-                    )
-                    break
+
+                except Exception as e:
+                    # 导入 CookieExpiredError
+                    from media_platform.xhs.exception import CookieExpiredError
+
+                    # 首先检查是否是 cookies 失效错误
+                    if isinstance(e, CookieExpiredError):
+                        utils.logger.warning(
+                            f"[XiaoHongShuCrawler.search] Cookie expired at page {page}: {e}"
+                        )
+
+                        # 尝试重新登录
+                        if await self.handle_cookie_expired():
+                            # 重登录成功，重试当前页（不增加 page）
+                            utils.logger.info(
+                                f"[XiaoHongShuCrawler.search] Retrying page {page} after re-login"
+                            )
+                            continue
+                        else:
+                            # 重登录失败，停止爬取
+                            utils.logger.error(
+                                "[XiaoHongShuCrawler.search] Re-login failed, stopping search"
+                            )
+                            break
+
+                    # 其他异常（包括 DataFetchError）
+                    elif isinstance(e, DataFetchError):
+                        utils.logger.error(
+                            "[XiaoHongShuCrawler.search] Get note detail error"
+                        )
+                        break
+                    else:
+                        # 未知异常，重新抛出
+                        raise
                 # todo: 每个keyword搜索结果保存一次
             utils.logger.info(
                             f"[XiaoHongShuCrawler.search] search_result_list: {search_result_list}"
@@ -296,34 +394,67 @@ class XiaoHongShuCrawler(AbstractCrawler):
             "[XiaoHongShuCrawler.get_creators_and_notes] Begin get xiaohongshu creators"
         )
         for user_id in config.XHS_CREATOR_ID_LIST:
-            # 在获取创作者信息前模拟人类行为
-            # await self.simulate_human_behavior(self.context_page)
-            
-            # get creator detail info from web html content
-            createor_info: Dict = await self.xhs_client.get_creator_info(
-                user_id=user_id
-            )
-            
-            # 在获取创作者信息后模拟人类行为
-            await self.simulate_human_behavior(self.context_page)
-            
-            if createor_info:
-                await xhs_store.save_creator(user_id, creator=createor_info)
+            try:
+                # 在获取创作者信息前模拟人类行为
+                # await self.simulate_human_behavior(self.context_page)
 
-            # When proxy is not enabled, increase the crawling interval
-            if config.ENABLE_IP_PROXY:
-                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
-            else:
-                crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
-            # Get all note information of the creator
-            all_notes_list = await self.xhs_client.get_all_notes_by_creator(
-                user_id=user_id,
-                crawl_interval=crawl_interval,
-                max_count=config.CRAWLER_MAX_NOTES_COUNT,
-                callback=self.fetch_creator_notes_detail
-            )
-            
-            print("[XiaoHongShuCrawler.get_all_notes_by_creator] after crawler get all notes size:", len(all_notes_list))
+                # get creator detail info from web html content
+                createor_info: Dict = await self.xhs_client.get_creator_info(
+                    user_id=user_id
+                )
+
+                # 在获取创作者信息后模拟人类行为
+                await self.simulate_human_behavior(self.context_page)
+
+                if createor_info:
+                    await xhs_store.save_creator(user_id, creator=createor_info)
+
+                # When proxy is not enabled, increase the crawling interval
+                if config.ENABLE_IP_PROXY:
+                    crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
+                else:
+                    crawl_interval = random.uniform(1, config.CRAWLER_MAX_SLEEP_SEC)
+                # Get all note information of the creator
+                all_notes_list = await self.xhs_client.get_all_notes_by_creator(
+                    user_id=user_id,
+                    crawl_interval=crawl_interval,
+                    max_count=config.CRAWLER_MAX_NOTES_COUNT,
+                    callback=self.fetch_creator_notes_detail
+                )
+
+                print("[XiaoHongShuCrawler.get_all_notes_by_creator] after crawler get all notes size:", len(all_notes_list))
+
+            except Exception as e:
+                # 导入 CookieExpiredError
+                from media_platform.xhs.exception import CookieExpiredError
+
+                # 首先检查是否是 cookies 失效错误
+                if isinstance(e, CookieExpiredError):
+                    utils.logger.warning(
+                        f"[XiaoHongShuCrawler.get_creators_and_notes] Cookie expired for creator {user_id}: {e}"
+                    )
+
+                    # 尝试重新登录
+                    if await self.handle_cookie_expired():
+                        # 重登录成功，重试当前创作者
+                        utils.logger.info(
+                            f"[XiaoHongShuCrawler.get_creators_and_notes] Retrying creator {user_id} after re-login"
+                        )
+                        continue
+                    else:
+                        # 重登录失败，停止爬取
+                        utils.logger.error(
+                            "[XiaoHongShuCrawler.get_creators_and_notes] Re-login failed, stopping crawler"
+                        )
+                        break
+
+                # 其他异常
+                else:
+                    utils.logger.error(
+                        f"[XiaoHongShuCrawler.get_creators_and_notes] Error processing creator {user_id}: {e}"
+                    )
+                    # 继续处理下一个创作者
+                    continue
 
 
     async def fetch_creator_notes_detail(self, note_list: List[Dict]) -> List[str]:

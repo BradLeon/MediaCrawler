@@ -151,11 +151,14 @@ class XiaoHongShuClient(AbstractApiClient):
                 response = await client.request(method, url, timeout=self.timeout, **kwargs)
                 
                 if response.status_code == 471 or response.status_code == 461:
-                    # 处理验证码情况
-                    verify_type = response.headers["Verifytype"]
-                    verify_uuid = response.headers["Verifyuuid"]
-                    raise Exception(
-                        f"出现验证码，请求失败，Verifytype: {verify_type}，Verifyuuid: {verify_uuid}, Response: {response}"
+                    # 处理验证码情况 - 抛出 cookies 失效异常
+                    verify_type = response.headers.get("Verifytype", "unknown")
+                    verify_uuid = response.headers.get("Verifyuuid", "unknown")
+
+                    from media_platform.xhs.exception import CookieExpiredError
+                    raise CookieExpiredError(
+                        f"Cookie expired (HTTP {response.status_code}), "
+                        f"Verifytype: {verify_type}, Verifyuuid: {verify_uuid}"
                     )
                 
                 if return_response:

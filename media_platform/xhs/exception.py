@@ -18,3 +18,10 @@ class DataFetchError(RequestError):
 
 class IPBlockError(RequestError):
     """fetch so fast that the server block us ip"""
+
+
+class CookieExpiredError(RequestError):
+    """
+    Cookies expired, need re-login
+    Raised when HTTP 461 or 471 status code is detected (verification required)
+    """
