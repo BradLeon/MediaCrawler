@@ -1188,5 +1188,29 @@ class XhsJsonStoreImplement(AbstractStore):
             utils.logger.error(f"评论文件不存在: {input_file}")
 
 
+# SQLite存储实现 - 继承自DB实现
+class XhsSqliteStoreImplement(XhsDbStoreImplement):
+    """
+    SQLite存储实现，继承自XhsDbStoreImplement
+    """
+
+    def __init__(self):
+        super().__init__()
+
+
+# Excel存储实现
+class XhsExcelStoreImplement(AbstractStore):
+    """
+    Excel存储实现 - 使用ExcelStoreBase全局单例
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from store.excel_store_base import ExcelStoreBase
+        return ExcelStoreBase.get_instance(
+            platform="xhs",
+            crawler_type=crawler_type_var.get()
+        )
+
+
 if __name__ == "__main__":
     asyncio.run(XhsCsvStoreImplement().convert_comments_to_conversations())

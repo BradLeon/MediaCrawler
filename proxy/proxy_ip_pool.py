@@ -41,11 +41,12 @@ class ProxyIpPool:
             enable_validate_ip:
             ip_provider:
         """
-        self.valid_ip_url = "https://httpbin.org/ip"  # 验证 IP 是否有效的地址
+        self.valid_ip_url = "https://echo.apifox.cn/"  # 验证 IP 是否有效的地址
         self.ip_pool_count = ip_pool_count
         self.enable_validate_ip = enable_validate_ip
         self.proxy_list: List[IpInfoModel] = []
         self.ip_provider: ProxyProvider = ip_provider
+        self.current_proxy: IpInfoModel | None = None  # 当前正在使用的代理
 
     async def load_proxies(self) -> None:
         """
@@ -85,14 +86,41 @@ class ProxyIpPool:
         if len(self.proxy_list) == 0:
             await self._reload_proxies()
 
-        # test
-        print("self.proxy_list.len:", len(self.proxy_list))
         proxy = random.choice(self.proxy_list)
-        self.proxy_list.remove(proxy) # 取出来一个IP就应该移出掉
+        self.proxy_list.remove(proxy)  # 取出来一个IP就应该移出掉
         if self.enable_validate_ip:
             if not await self._is_valid_proxy(proxy):
                 raise Exception("[ProxyIpPool.get_proxy] current ip invalid and again get it")
+        self.current_proxy = proxy  # 保存当前使用的代理
         return proxy
+
+    def is_current_proxy_expired(self, buffer_seconds: int = 30) -> bool:
+        """
+        检测当前代理是否已过期
+        Args:
+            buffer_seconds: 缓冲时间（秒），提前多少秒认为已过期
+        Returns:
+            bool: True表示已过期或没有当前代理，False表示仍然有效
+        """
+        if self.current_proxy is None:
+            return True
+        return self.current_proxy.is_expired(buffer_seconds)
+
+    async def get_or_refresh_proxy(self, buffer_seconds: int = 30) -> IpInfoModel:
+        """
+        获取当前代理，如果已过期则自动刷新
+        每次发起请求前调用此方法来确保代理有效
+        Args:
+            buffer_seconds: 缓冲时间（秒），提前多少秒认为已过期
+        Returns:
+            IpInfoModel: 有效的代理IP信息
+        """
+        if self.is_current_proxy_expired(buffer_seconds):
+            utils.logger.info(
+                f"[ProxyIpPool.get_or_refresh_proxy] Current proxy expired or not set, getting new proxy..."
+            )
+            return await self.get_proxy()
+        return self.current_proxy
 
     async def _reload_proxies(self):
         """
