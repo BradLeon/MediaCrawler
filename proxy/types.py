@@ -16,6 +16,8 @@
 from enum import Enum
 from typing import Optional
 
+import time
+
 from pydantic import BaseModel, Field
 
 
@@ -44,4 +46,17 @@ class IpInfoModel(BaseModel):
     password: str = Field(title="IP代理认证用户的密码")
     protocol: str = Field(default="https://", title="代理IP的协议")
     tunnel: str = Field(default="g398.kdltps.com:15818", title="IP代理的隧道(默认采用快代理的服务器)")
-    expired_time_ts: Optional[int] = Field(title="IP 过期时间")
+    expired_time_ts: Optional[int] = Field(default=None, title="IP 过期时间")
+
+    def is_expired(self, buffer_seconds: int = 30) -> bool:
+        """
+        检测代理是否已过期
+        Args:
+            buffer_seconds: 缓冲时间（秒），提前多少秒认为已过期
+        Returns:
+            bool: True表示已过期，False表示仍然有效
+        """
+        if self.expired_time_ts is None:
+            return False  # 如果没有设置过期时间，认为永不过期
+        current_time = int(time.time())
+        return current_time >= (self.expired_time_ts - buffer_seconds)

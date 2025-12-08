@@ -96,6 +96,13 @@ class AbstractStoreImage(ABC):
         pass
 
 
+class AbstractStoreVideo(ABC):
+    # TODO: support all platform
+    # @abstractmethod
+    async def store_video(self, video_content_item: Dict):
+        pass
+
+
 class AbstractApiClient(ABC):
     @abstractmethod
     async def request(self, method, url, **kwargs):

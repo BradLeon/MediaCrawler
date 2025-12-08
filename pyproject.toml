@@ -1,31 +1,78 @@
 [project]
 name = "mediacrawler"
-author = "程序员阿江-Relakkes <relakkes@gmail.com>"
 version = "0.1.0"
 description = "A social media crawler project, support Xiaohongshu, Weibo, Zhihu, Bilibili, Douyin, BaiduTieBa etc."
 readme = "README.md"
-requires-python = "==3.9"
+requires-python = ">=3.11"
 dependencies = [
-    "aiofiles~=23.2.1",
-    "aiomysql==0.2.0",
-    "fastapi==0.110.2",
-    "httpx==0.24.0",
-    "jieba==0.42.1",
-    "matplotlib==3.9.0",
-    "opencv-python>=4.11.0.86",
-    "pandas==2.2.3",
-    "parsel==1.9.1",
-    "pillow==9.5.0",
-    "playwright==1.42.0",
-    "pydantic==2.5.2",
-    "pyexecjs==1.5.1",
-    "python-dotenv==1.0.1",
-    "redis~=4.6.0",
-    "requests==2.32.3",
+    # Core HTTP and Browser
+    "httpx==0.28.1",
+    "playwright==1.45.0",
     "tenacity==8.2.2",
+    "requests==2.32.3",
+
+    # CLI
+    "typer>=0.12.3",
+
+    # Image Processing
+    "pillow==9.5.0",
+    "opencv-python>=4.11.0.86",
+
+    # Database - Primary: Supabase, Secondary: SQLite
+    "supabase==2.15.2",
+    "aiomysql==0.2.0",
+    "aiosqlite==0.21.0",
+    "sqlalchemy>=2.0.43",
+    "asyncmy>=0.2.10",
+    "alembic>=1.16.5",
+
+    # Cache
+    "redis~=4.6.0",
+
+    # Data Validation & Processing
+    "pydantic==2.5.2",
+    "pandas==2.2.3",
+    "pyhumps==3.8.0",
+
+    # Async File Operations
+    "aiofiles~=23.2.1",
+
+    # API Framework
+    "fastapi==0.110.2",
     "uvicorn==0.29.0",
+
+    # Environment & Config
+    "python-dotenv==1.0.1",
+
+    # Text Processing & Visualization
+    "jieba==0.42.1",
     "wordcloud==1.9.3",
+    "matplotlib==3.9.0",
+
+    # Web Scraping
+    "parsel==1.9.1",
+    "pyexecjs==1.5.1",
+
+    # XHS Signing
+    "xhshow>=0.1.3",
+    "cryptography>=45.0.7",
+
+    # Excel Export
+    "openpyxl>=3.1.2",
+
+    # Timezone
+    "pytz>=2024.1",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[tool.uv]
+# 使用清华镜像加速
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

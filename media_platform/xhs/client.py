@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 relakkes@gmail.com
+#
+# This file is part of MediaCrawler project.
+# Repository: https://github.com/NanmiCoder/MediaCrawler
+# Licensed under NON-COMMERCIAL LEARNING LICENSE 1.1
+#
 # 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：
 # 1. 不得用于任何商业用途。
 # 2. 使用时应遵守目标平台的使用条款和robots.txt规则。
@@ -12,42 +19,48 @@
 import asyncio
 import json
 import random
-import time
 import re
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 from urllib.parse import urlencode
 
 import httpx
 from playwright.async_api import BrowserContext, Page
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_result, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 import config
 from base.base_crawler import AbstractApiClient
+from proxy.proxy_mixin import ProxyRefreshMixin
 from tools import utils
-from html import unescape
+
+if TYPE_CHECKING:
+    from proxy.proxy_ip_pool import ProxyIpPool
 
 from .exception import DataFetchError, IPBlockError
 from .field import SearchNoteType, SearchSortType
-from .help import get_search_id, sign
+from .help import get_search_id
+from .extractor import XiaoHongShuExtractor
+from .playwright_sign import sign_with_playwright
 
-# 导入httpx兼容性工具
+# Fork: 导入httpx兼容性工具
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.httpx_compat import create_httpx_async_context
 
 
-class XiaoHongShuClient(AbstractApiClient):
+class XiaoHongShuClient(AbstractApiClient, ProxyRefreshMixin):
+
     def __init__(
         self,
-        timeout=10,
-        proxies=None,
+        timeout=60,  # 若开启爬取媒体选项，xhs 的长视频需要更久的超时时间
+        proxy=None,  # 代理URL，内部转换为proxies格式以兼容httpx_compat
         *,
         headers: Dict[str, str],
         playwright_page: Page,
         cookie_dict: Dict[str, str],
+        proxy_ip_pool: Optional["ProxyIpPool"] = None,
     ):
-        self.proxies = proxies
+        self.proxies = proxy  # 内部使用proxies以兼容httpx_compat
         self.timeout = timeout
         self.headers = headers
         self._host = "https://edith.xiaohongshu.com"
@@ -58,26 +71,42 @@ class XiaoHongShuClient(AbstractApiClient):
         self.NOTE_ABNORMAL_CODE = -510001
         self.playwright_page = playwright_page
         self.cookie_dict = cookie_dict
+        self._extractor = XiaoHongShuExtractor()
+        # Fork: 代理过期标志，用于外部刷新代理
+        self.proxy_expired = False
+        # 初始化代理池（来自 ProxyRefreshMixin）
+        self.init_proxy_pool(proxy_ip_pool)
 
-    async def _pre_headers(self, url: str, data=None) -> Dict:
-        """
-        请求头参数签名
+    async def _pre_headers(self, url: str, params: Optional[Dict] = None, payload: Optional[Dict] = None) -> Dict:
+        """请求头参数签名（使用 playwright 注入方式）
+
         Args:
-            url:
-            data:
+            url: 请求的URL
+            params: GET请求的参数
+            payload: POST请求的参数
 
         Returns:
-
+            Dict: 请求头参数签名
         """
-        encrypt_params = await self.playwright_page.evaluate(
-            "([url, data]) => window._webmsxyw(url,data)", [url, data]
-        )
-        local_storage = await self.playwright_page.evaluate("() => window.localStorage")
-        signs = sign(
-            a1=self.cookie_dict.get("a1", ""),
-            b1=local_storage.get("b1", ""),
-            x_s=encrypt_params.get("X-s", ""),
-            x_t=str(encrypt_params.get("X-t", "")),
+        a1_value = self.cookie_dict.get("a1", "")
+
+        # 确定请求数据、方法和 URI
+        if params is not None:
+            data = params
+            method = "GET"
+        elif payload is not None:
+            data = payload
+            method = "POST"
+        else:
+            raise ValueError("params or payload is required")
+
+        # 使用 playwright 注入方式生成签名
+        signs = await sign_with_playwright(
+            page=self.playwright_page,
+            uri=url,
+            data=data,
+            a1=a1_value,
+            method=method,
         )
 
         headers = {
@@ -89,6 +118,7 @@ class XiaoHongShuClient(AbstractApiClient):
         self.headers.update(headers)
         return self.headers
 
+    # Fork: 增强的重试机制，支持更多异常类型
     @retry(
         stop=stop_after_attempt(5),  # 最多重试5次
         wait=wait_fixed(2),          # 每次重试间隔2秒
@@ -109,23 +139,28 @@ class XiaoHongShuClient(AbstractApiClient):
         Returns:
 
         """
+        # 每次请求前检测代理是否过期
+        await self._refresh_proxy_if_expired()
+
         return_response = kwargs.pop("return_response", False)
-        
+
         try:
+            # Fork: 使用httpx兼容层
             async with create_httpx_async_context(proxies=self.proxies) as client:
-                request_interval = random.uniform(1, 12)  # 随机增加2-7秒
-                await asyncio.sleep(request_interval)  # 设置请求时间间隔
+                # Fork: 随机请求间隔
+                request_interval = random.uniform(1, 12)
+                await asyncio.sleep(request_interval)
 
                 response = await client.request(method, url, timeout=self.timeout, **kwargs)
-                
+
+                # Fork: 增强的验证码检测
                 if response.status_code == 471 or response.status_code == 461:
-                    # 处理验证码情况
-                    verify_type = response.headers["Verifytype"]
-                    verify_uuid = response.headers["Verifyuuid"]
+                    verify_type = response.headers.get("Verifytype", "unknown")
+                    verify_uuid = response.headers.get("Verifyuuid", "unknown")
                     raise Exception(
                         f"出现验证码，请求失败，Verifytype: {verify_type}，Verifyuuid: {verify_uuid}, Response: {response}"
                     )
-                
+
                 if return_response:
                     return response.text
                 data: Dict = response.json()
@@ -134,14 +169,15 @@ class XiaoHongShuClient(AbstractApiClient):
                 elif data["code"] == self.IP_ERROR_CODE:
                     raise IPBlockError(self.IP_ERROR_STR)
                 else:
-                    raise DataFetchError(data.get("msg", None))
+                    err_msg = data.get("msg", None) or f"{response.text}"
+                    raise DataFetchError(err_msg)
         except httpx.ProxyError as e:
             utils.logger.error(f"代理错误: {e}")
-            # 如果是代理身份验证过期，设置标志以便外部刷新代理
+            # Fork: 如果是代理身份验证过期，设置标志以便外部刷新代理
             self.proxy_expired = True
             raise  # 重新抛出异常，让tenacity可以进行重试
 
-    async def get(self, uri: str, params=None) -> Dict:
+    async def get(self, uri: str, params: Optional[Dict] = None) -> Dict:
         """
         GET请求，对请求头签名
         Args:
@@ -151,12 +187,11 @@ class XiaoHongShuClient(AbstractApiClient):
         Returns:
 
         """
-        final_uri = uri
-        if isinstance(params, dict):
-            final_uri = f"{uri}?" f"{urlencode(params)}"
-        headers = await self._pre_headers(final_uri)
+        headers = await self._pre_headers(uri, params=params)
+        full_url = f"{self._host}{uri}"
+
         return await self.request(
-            method="GET", url=f"{self._host}{final_uri}", headers=headers
+            method="GET", url=full_url, headers=headers, params=params
         )
 
     async def post(self, uri: str, data: dict, **kwargs) -> Dict:
@@ -169,10 +204,8 @@ class XiaoHongShuClient(AbstractApiClient):
         Returns:
 
         """
-        headers = await self._pre_headers(uri, data)
+        headers = await self._pre_headers(uri, payload=data)
         json_str = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
-        # test
-        # print("[XiaoHongShuClient.post] url:", f"{self._host}{uri}", "data:", json_str, "headers:", headers)
         return await self.request(
             method="POST",
             url=f"{self._host}{uri}",
@@ -182,15 +215,26 @@ class XiaoHongShuClient(AbstractApiClient):
         )
 
     async def get_note_media(self, url: str) -> Union[bytes, None]:
+        # 请求前检测代理是否过期
+        await self._refresh_proxy_if_expired()
+
+        # Fork: 使用httpx兼容层
         async with create_httpx_async_context(proxies=self.proxies) as client:
-            response = await client.request("GET", url, timeout=self.timeout)
-            if not response.reason_phrase == "OK":
+            try:
+                response = await client.request("GET", url, timeout=self.timeout)
+                response.raise_for_status()
+                if not response.reason_phrase == "OK":
+                    utils.logger.error(
+                        f"[XiaoHongShuClient.get_note_media] request {url} err, res:{response.text}"
+                    )
+                    return None
+                else:
+                    return response.content
+            except httpx.HTTPError as exc:
                 utils.logger.error(
-                    f"[XiaoHongShuClient.get_note_media] request {url} err, res:{response.text}"
+                    f"[XiaoHongShuClient.get_note_media] {exc.__class__.__name__} for {exc.request.url} - {exc}"
                 )
                 return None
-            else:
-                return response.content
 
     async def pong(self) -> bool:
         """
@@ -339,14 +383,14 @@ class XiaoHongShuClient(AbstractApiClient):
         params = {
             "note_id": note_id,
             "root_comment_id": root_comment_id,
-            "num": num,
+            "num": str(num),
             "cursor": cursor,
             "image_formats": "jpg,webp,avif",
             "top_comment_id": "",
             "xsec_token": xsec_token,
         }
         return await self.get(uri, params)
-    
+
 
     async def get_note_all_comments(
         self,
@@ -371,10 +415,10 @@ class XiaoHongShuClient(AbstractApiClient):
         comments_has_more = True
         comments_cursor = ""
         while comments_has_more and len(result) < max_count:
+            # Fork: 随机请求间隔
+            request_interval = random.uniform(8, 15)
+            await asyncio.sleep(request_interval)
 
-            request_interval = random.uniform(8, 15)  # 随机增加2-7秒
-            await asyncio.sleep(request_interval)  # 设置请求时间间隔
-        
             comments_res = await self.get_note_comments(
                 note_id=note_id, xsec_token=xsec_token, cursor=comments_cursor
             )
@@ -400,54 +444,84 @@ class XiaoHongShuClient(AbstractApiClient):
             )
             result.extend(sub_comments)
         return result
-    
 
-    async def get_creator_info(self, user_id: str) -> Dict:
-        """
-        通过解析网页版的用户主页HTML，获取用户个人简要信息
-        PC端用户主页的网页存在window.__INITIAL_STATE__这个变量上的，解析它即可
-        eg: https://www.xiaohongshu.com/user/profile/59d8cb33de5fb4696bf17217
-        """
-        uri = f"/user/profile/{user_id}"
-        html_content = await self.request(
-            "GET", self._domain + uri, return_response=True, headers=self.headers
-        )
-        match = re.search(
-            r"<script>window.__INITIAL_STATE__=(.+)<\/script>", html_content, re.M
-        )
-
+    # Fork: 获取当前登录用户信息
     async def get_current_user_info(self) -> Dict:
         """
-        获取当前登录用户信息
+        获取当前登录用户信息，支持回退逻辑
         Returns:
             用户信息字典，包含昵称、用户名、手机号等信息
         """
-        uri = "/api/sns/web/v1/user/selfinfo"
+        # 尝试 v1 API
+        uri_v1 = "/api/sns/web/v1/user/selfinfo"
         try:
-            # 尝试使用新的API
-            return await self.get(uri)
+            # 传递空字典作为params，因为_pre_headers要求params或payload不能都为None
+            return await self.get(uri_v1, params={})
         except Exception as e:
-            utils.logger.warning(f"[XiaoHongShuClient.get_current_user_info] Primary API failed: {e}, trying alternative...")
-            # 如果主要API失败，尝试备用API        
+            utils.logger.warning(f"[XiaoHongShuClient.get_current_user_info] v1 API failed: {e}, trying v2 API...")
+
+        # 回退到 v2 API
+        uri_v2 = "/api/sns/web/v2/user/me"
+        try:
+            return await self.get(uri_v2, params={})
+        except Exception as e:
+            utils.logger.warning(f"[XiaoHongShuClient.get_current_user_info] v2 API also failed: {e}")
             return {
+                    "basic_info": {"nickname": "unknown_user"},
                     "nickname": "unknown_user",
                     "username": "unknown",
                     "phone": "unknown",
                     "user_id": "unknown",
-                    "error": f"Failed to get user info: {e}"
+                    "error": f"Failed to get user info from both APIs"
                 }
 
+    # Fork: 获取当前登录用户昵称
     async def get_current_user_nickname(self) -> str:
         current_user_info = await self.get_current_user_info()
         try:
-            current_user_nickname = current_user_info.get("basic_info").get("nickname")
-            return current_user_nickname
+            # 优先从 basic_info 获取（v1 API 返回格式）
+            basic_info = current_user_info.get("basic_info")
+            if basic_info and basic_info.get("nickname"):
+                return basic_info.get("nickname")
+            # 回退到直接获取 nickname（v2 API 或 fallback 返回格式）
+            if current_user_info.get("nickname"):
+                return current_user_info.get("nickname")
+            return "unknown_user"
         except Exception as e:
             utils.logger.error(f"[XiaoHongShuClient.get_current_user_nickname] Error getting current user nickname: {e}")
             return "unknown_user"
 
+    async def get_creator_info(
+        self, user_id: str, xsec_token: str = "", xsec_source: str = ""
+    ) -> Dict:
+        """
+        通过解析网页版的用户主页HTML，获取用户个人简要信息
+        PC端用户主页的网页存在window.__INITIAL_STATE__这个变量上的，解析它即可
+
+        Args:
+            user_id: 用户ID
+            xsec_token: 验证token (可选,如果URL中包含此参数则传入)
+            xsec_source: 渠道来源 (可选,如果URL中包含此参数则传入)
+
+        Returns:
+            Dict: 创作者信息
+        """
+        uri = f"/user/profile/{user_id}"
+        if xsec_token and xsec_source:
+            uri = f"{uri}?xsec_token={xsec_token}&xsec_source={xsec_source}"
+
+        html_content = await self.request(
+            "GET", self._domain + uri, return_response=True, headers=self.headers
+        )
+        return self._extractor.extract_creator_info_from_html(html_content)
+
     async def get_notes_by_creator(
-        self, creator: str, cursor: str, page_size: int = 30
+        self,
+        creator: str,
+        cursor: str,
+        page_size: int = 30,
+        xsec_token: str = "",
+        xsec_source: str = "pc_feed",
     ) -> Dict:
         """
         获取博主的笔记
@@ -455,44 +529,58 @@ class XiaoHongShuClient(AbstractApiClient):
             creator: 博主ID
             cursor: 上一页最后一条笔记的ID
             page_size: 分页数据长度
+            xsec_token: 验证token
+            xsec_source: 渠道来源
 
         Returns:
 
         """
-        uri = "/api/sns/web/v1/user_posted"
-        data = {
-            "user_id": creator,
-            "cursor": cursor,
+        uri = f"/api/sns/web/v1/user_posted"
+        params = {
             "num": page_size,
-            "image_formats": "jpg,webp,avif",
+            "cursor": cursor,
+            "user_id": creator,
+            "xsec_token": xsec_token,
+            "xsec_source": xsec_source,
         }
-        return await self.get(uri, data)
+        return await self.get(uri, params)
 
     async def get_all_notes_by_creator(
         self,
         user_id: str,
         crawl_interval: float = 1.0,
-        max_count:  int = 300,
+        max_count: int = 300,
         callback: Optional[Callable] = None,
+        xsec_token: str = "",
+        xsec_source: str = "pc_feed",
     ) -> List[Dict]:
         """
         获取指定用户下的所有发过的帖子，该方法会一直查找一个用户下的所有帖子信息
         Args:
             user_id: 用户ID
             crawl_interval: 爬取一次的延迟单位（秒）
+            max_count: 最大笔记数量
             callback: 一次分页爬取结束后的更新回调函数
+            xsec_token: 验证token
+            xsec_source: 渠道来源
 
         Returns:
 
         """
+        # 使用配置中的最大数量和传入参数的较小值
+        effective_max = min(max_count, config.CRAWLER_MAX_NOTES_COUNT)
+
         result = []
         notes_has_more = True
         notes_cursor = ""
-        while notes_has_more:
-            notes_res = await self.get_notes_by_creator(user_id, notes_cursor)
+        while notes_has_more and len(result) < effective_max:
+            notes_res = await self.get_notes_by_creator(
+                user_id, notes_cursor, xsec_token=xsec_token, xsec_source=xsec_source
+            )
 
-            request_interval = random.uniform(5, 30)  # 随机增加2-7秒
-            await asyncio.sleep(request_interval)  # 设置请求时间间隔
+            # Fork: 随机请求间隔
+            request_interval = random.uniform(5, 30)
+            await asyncio.sleep(request_interval)
 
             if not notes_res:
                 utils.logger.error(
@@ -512,16 +600,23 @@ class XiaoHongShuClient(AbstractApiClient):
             utils.logger.info(
                 f"[XiaoHongShuClient.get_all_notes_by_creator] got user_id:{user_id} notes len : {len(notes)}"
             )
-            if callback:
-                await callback(notes)
-            await asyncio.sleep(crawl_interval)  # 爬取间隔
-            result.extend(notes)
 
-            if len(result) >= max_count:
-                return result
-            
+            remaining = effective_max - len(result)
+            if remaining <= 0:
+                break
+
+            notes_to_add = notes[:remaining]
+            if callback:
+                await callback(notes_to_add)
+
+            result.extend(notes_to_add)
+            await asyncio.sleep(crawl_interval)
+
+        utils.logger.info(
+            f"[XiaoHongShuClient.get_all_notes_by_creator] Finished getting notes for user {user_id}, total: {len(result)}"
+        )
         return result
-    
+
     async def get_note_short_url(self, note_id: str) -> Dict:
         """
         获取笔记的短链接
@@ -556,38 +651,11 @@ class XiaoHongShuClient(AbstractApiClient):
         Returns:
 
         """
-
-        def camel_to_underscore(key):
-            return re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower()
-
-        def transform_json_keys(json_data):
-            data_dict = json.loads(json_data)
-            dict_new = {}
-            for key, value in data_dict.items():
-                new_key = camel_to_underscore(key)
-                if not value:
-                    dict_new[new_key] = value
-                elif isinstance(value, dict):
-                    dict_new[new_key] = transform_json_keys(json.dumps(value))
-                elif isinstance(value, list):
-                    dict_new[new_key] = [
-                        (
-                            transform_json_keys(json.dumps(item))
-                            if (item and isinstance(item, dict))
-                            else item
-                        )
-                        for item in value
-                    ]
-                else:
-                    dict_new[new_key] = value
-            return dict_new
-
         url = (
             "https://www.xiaohongshu.com/explore/"
             + note_id
             + f"?xsec_token={xsec_token}&xsec_source={xsec_source}"
         )
-    
         copy_headers = self.headers.copy()
         if not enable_cookie:
             del copy_headers["Cookie"]
@@ -596,39 +664,23 @@ class XiaoHongShuClient(AbstractApiClient):
             method="GET", url=url, return_response=True, headers=copy_headers
         )
 
-        # test
-        #print("[XiaoHongShuClient.get_note_by_id_from_html] enable_cookie:", enable_cookie)
-        #print("[XiaoHongShuClient.get_note_by_id_from_html] url:", url, "headers:", copy_headers)
+        return self._extractor.extract_note_detail_from_html(note_id, html)
 
-        def get_note_dict(html):
-            state = re.findall(r"window.__INITIAL_STATE__=({.*})</script>", html)[
-                0
-            ].replace("undefined", '""')
-
-            if state != "{}":
-                note_dict = transform_json_keys(state)
-                return note_dict["note"]["note_detail_map"][note_id]["note"]
-            return {}
-
-        try:
-            return get_note_dict(html)
-        except:
-            return None
-
+    # Fork: 增强的多级评论获取（支持递归深度）
     async def get_comments_all_sub_comments(
         self,
         comments: List[Dict],
         xsec_token: str,
         crawl_interval: float = 1.0,
         callback: Optional[Callable] = None,
-        max_depth: int = config.COMMENT_CONVERSATION_MAX_DEPTH,  # 默认最大递归深度为3
-        current_depth: int = 1  # 当前递归深度，初始为1
+        max_depth: int = config.COMMENT_CONVERSATION_MAX_DEPTH,
+        current_depth: int = 1
     ) -> List[Dict]:
         """
         递归获取多级子评论，可以获取任意深度的评论树
-        
+
         Note: 这个方法是get_comments_all_sub_comments的增强版，可以获取多级嵌套的子评论
-        
+
         Args:
             comments: 评论列表
             xsec_token: 验证token
@@ -636,7 +688,7 @@ class XiaoHongShuClient(AbstractApiClient):
             callback: 一次评论爬取结束后的回调函数
             max_depth: 最大递归深度，默认为3，设置为-1表示无限递归
             current_depth: 当前递归深度，仅内部使用
-            
+
         Returns:
             所有子评论的列表，包含嵌套结构
         """
@@ -645,34 +697,35 @@ class XiaoHongShuClient(AbstractApiClient):
                 f"[XiaoHongShuClient.get_comments_all_sub_comments] Crawling sub_comment mode is not enabled"
             )
             return []
-        
+
         # 检查是否达到最大递归深度
         if max_depth > 0 and current_depth > max_depth:
             return []
-        
+
         result = []
         for comment in comments:
             note_id = comment.get("note_id")
-            
+
             # 处理已存在的子评论
             sub_comments = comment.get("sub_comments", [])
             if sub_comments and callback:
                 await callback(note_id, sub_comments)
                 result.extend(sub_comments)
-            
+
             # 检查是否有更多子评论需要获取
             sub_comment_has_more = comment.get("sub_comment_has_more", False)
             if not sub_comment_has_more:
                 continue
-            
+
             root_comment_id = comment.get("id")
             sub_comment_cursor = comment.get("sub_comment_cursor", "")
-            
+
             # 获取所有子评论
             child_comments = []
             while sub_comment_has_more:
-                request_interval = random.uniform(7, 15)  # 随机增加2-7秒
-                await asyncio.sleep(request_interval)  # 设置请求时间间隔
+                # Fork: 随机请求间隔
+                request_interval = random.uniform(7, 15)
+                await asyncio.sleep(request_interval)
                 try:
                     comments_res = await self.get_note_sub_comments(
                         note_id=note_id,
@@ -681,41 +734,41 @@ class XiaoHongShuClient(AbstractApiClient):
                         num=20,
                         cursor=sub_comment_cursor,
                     )
-                    
+
                     sub_comment_has_more = comments_res.get("has_more", False)
                     sub_comment_cursor = comments_res.get("cursor", "")
-                    
+
                     if "comments" not in comments_res:
                         utils.logger.info(
                             f"[XiaoHongShuClient.get_comments_all_sub_comments] No 'comments' key found in response: {comments_res}"
                         )
                         break
-                    
+
                     fetched_comments = comments_res["comments"]
                     if not fetched_comments:
                         break
-                    
+
                     # 处理这一批子评论
                     if callback:
                         await callback(note_id, fetched_comments)
-                    
+
                     child_comments.extend(fetched_comments)
                     await asyncio.sleep(crawl_interval)
-                    
+
                 except Exception as e:
                     utils.logger.error(f"[XiaoHongShuClient.get_comments_all_sub_comments] Error fetching sub comments: {e}")
                     await asyncio.sleep(crawl_interval)
-            
+
             # 将这些子评论添加到结果中
             result.extend(child_comments)
-            
+
             # 递归获取更深层级的子评论（如果需要）
             if max_depth < 0 or current_depth < max_depth:
                 # 为每个子评论设置note_id
                 for child in child_comments:
                     if "note_id" not in child:
                         child["note_id"] = note_id
-                
+
                 # 递归调用，获取下一级子评论
                 deeper_comments = await self.get_comments_all_sub_comments(
                     comments=child_comments,
@@ -725,10 +778,10 @@ class XiaoHongShuClient(AbstractApiClient):
                     max_depth=max_depth,
                     current_depth=current_depth + 1
                 )
-                
+
                 # 更新每个子评论的sub_comments字段
                 comment_map = {comment["id"]: comment for comment in child_comments if "id" in comment}
-                
+
                 # 按父评论ID分组
                 child_comment_groups = {}
                 for sub_comment in deeper_comments:
@@ -737,15 +790,15 @@ class XiaoHongShuClient(AbstractApiClient):
                         if parent_id not in child_comment_groups:
                             child_comment_groups[parent_id] = []
                         child_comment_groups[parent_id].append(sub_comment)
-                
+
                 # 将子评论添加到对应的父评论中
                 for parent_id, children in child_comment_groups.items():
                     if parent_id in comment_map:
                         if "sub_comments" not in comment_map[parent_id]:
                             comment_map[parent_id]["sub_comments"] = []
                         comment_map[parent_id]["sub_comments"].extend(children)
-                
+
                 # 将更深层级的子评论添加到结果中
                 result.extend(deeper_comments)
-        
+
         return result
