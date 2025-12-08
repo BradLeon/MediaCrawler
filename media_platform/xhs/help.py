@@ -15,7 +15,9 @@ import random
 import time
 import urllib.parse
 
-from model.m_xiaohongshu import NoteUrlInfo
+import re
+
+from model.m_xiaohongshu import NoteUrlInfo, CreatorUrlInfo
 from tools.crawler_util import extract_url_params_to_dict
 
 
@@ -317,6 +319,36 @@ def parse_note_info_from_note_url(url: str) -> NoteUrlInfo:
     xsec_token = params.get("xsec_token", "")
     xsec_source = params.get("xsec_source", "")
     return NoteUrlInfo(note_id=note_id, xsec_token=xsec_token, xsec_source=xsec_source)
+
+
+def parse_creator_info_from_url(url: str) -> CreatorUrlInfo:
+    """
+    从小红书创作者主页URL中解析出创作者信息
+    支持以下格式:
+    1. 完整URL: "https://www.xiaohongshu.com/user/profile/5eb8e1d400000000010075ae?xsec_token=AB1nWBKCo1vE2HEkfoJUOi5B6BE5n7wVrbdpHoWIj5xHw=&xsec_source=pc_feed"
+    2. 纯ID: "5eb8e1d400000000010075ae"
+
+    Args:
+        url: 创作者主页URL或user_id
+    Returns:
+        CreatorUrlInfo: 包含user_id, xsec_token, xsec_source的对象
+    """
+    # 如果是纯ID格式(24位十六进制字符),直接返回
+    if len(url) == 24 and all(c in "0123456789abcdef" for c in url):
+        return CreatorUrlInfo(user_id=url, xsec_token="", xsec_source="")
+
+    # 从URL中提取user_id: /user/profile/xxx
+    user_pattern = r'/user/profile/([^/?]+)'
+    match = re.search(user_pattern, url)
+    if match:
+        user_id = match.group(1)
+        # 提取xsec_token和xsec_source参数
+        params = extract_url_params_to_dict(url)
+        xsec_token = params.get("xsec_token", "")
+        xsec_source = params.get("xsec_source", "")
+        return CreatorUrlInfo(user_id=user_id, xsec_token=xsec_token, xsec_source=xsec_source)
+
+    raise ValueError(f"无法从URL中解析出创作者信息: {url}")
 
 
 if __name__ == '__main__':
